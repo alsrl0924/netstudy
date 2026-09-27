@@ -10,6 +10,15 @@ export type Question = {
   options: string[];
   answer: number;
   sourceFile: string;
+  sourceAssets: Array<{
+    src: string;
+    width: number;
+    height: number;
+    sha256: string;
+    sourceFile: string;
+    page: number;
+    sourceObject: string;
+  }>;
 };
 
 export type QuestionCluster = {
@@ -41,6 +50,8 @@ export type QuestionBank = {
     examCount: number;
     firstYear: number;
     latestYear: number;
+    sourceAssetQuestionCount: number;
+    sourceAssetCount: number;
   };
   subjects: string[];
   exams: Exam[];

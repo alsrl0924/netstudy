@@ -8,6 +8,10 @@ const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const workspaceRoot = path.resolve(appRoot, "..");
 const sourceDir = path.join(workspaceRoot, "output", "data");
 const outputDir = path.join(appRoot, "public", "data");
+const sourceAssetManifest = JSON.parse(
+  await readFile(path.join(appRoot, "source-data", "question-source-assets.json"), "utf8"),
+);
+const sourceAssetsByQuestion = sourceAssetManifest.questions ?? {};
 
 const raw = JSON.parse(
   await readFile(path.join(sourceDir, "network_manager_2_questions.json"), "utf8"),
@@ -137,6 +141,7 @@ const questions = raw.questions
       options: question.options.map((option) => option.text),
       answer: question.answer,
       sourceFile: question.source_file,
+      sourceAssets: sourceAssetsByQuestion[id] ?? [],
     };
   })
   .sort(
@@ -207,6 +212,18 @@ for (const question of questions) {
 }
 
 const subjects = [...new Set(questions.map((question) => question.subject))];
+const questionIds = new Set(questions.map((question) => question.id));
+const unknownAssetIds = Object.keys(sourceAssetsByQuestion).filter((id) => !questionIds.has(id));
+if (unknownAssetIds.length) {
+  throw new Error(`Question assets reference unknown IDs: ${unknownAssetIds.join(", ")}`);
+}
+const sourceAssetQuestionCount = questions.filter(
+  (question) => question.sourceAssets.length,
+).length;
+const sourceAssetCount = questions.reduce(
+  (count, question) => count + question.sourceAssets.length,
+  0,
+);
 const payload = {
   meta: {
     generatedAt: new Date().toISOString(),
@@ -216,6 +233,8 @@ const payload = {
     examCount: exams.length,
     firstYear: Math.min(...questions.map((question) => question.year)),
     latestYear,
+    sourceAssetQuestionCount,
+    sourceAssetCount,
   },
   subjects,
   exams,
@@ -236,6 +255,8 @@ console.log(
     questions: questions.length,
     clusters: clusters.length,
     exams: exams.length,
+    sourceAssetQuestionCount,
+    sourceAssetCount,
     subjects,
   }),
 );

@@ -1624,7 +1624,35 @@ function QuestionHead({
           {cleanDisplayText(question.stem)}
         </h2>
       </div>
+      <QuestionSourceAssets question={question} />
     </>
+  );
+}
+
+function QuestionSourceAssets({ question }: { question: Question }) {
+  if (!question.sourceAssets?.length) return null;
+
+  return (
+    <figure className="mb-7 rounded-2xl border border-sky-200 bg-white p-3 shadow-sm dark:border-sky-900">
+      <figcaption className="mb-3 text-xs font-bold text-slate-600">
+        원문 지문·도표
+      </figcaption>
+      <div className="grid gap-3">
+        {question.sourceAssets.map((asset, index) => (
+          // The lossless source image must be served as-is instead of being re-encoded.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={`${question.id}-${asset.sha256}`}
+            src={asset.src}
+            width={asset.width}
+            height={asset.height}
+            alt={`원본 PDF의 문항 자료${question.sourceAssets.length > 1 ? ` ${index + 1}` : ""}`}
+            loading="lazy"
+            className="mx-auto block h-auto max-w-full"
+          />
+        ))}
+      </div>
+    </figure>
   );
 }
 

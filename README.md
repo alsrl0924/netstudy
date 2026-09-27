@@ -5,6 +5,7 @@
 ## 수록 범위
 
 - 91회 시험, 원문 4,550문항
+- 원문 PDF의 지문·도표·화면·수식 이미지 350개를 손실 없이 수록
 - 의미가 같은 반복 출제를 합친 통합 문항 2,037개
 - S 222개, A 298개, B 677개, C 840개
 - 빈출 해설 대상 1,197문항: 정답 근거, 네 선택지별 해설, 개념·연결 개념 통합 해설
@@ -56,6 +57,16 @@ npm run data:explanations
 - `data:all`: 두 작업을 순서대로 실행합니다.
 
 문제 문장과 선택지는 표시 과정에서 줄바꿈·공백만 정리하며 내용을 축약하거나 바꾸지 않습니다.
+
+PDF 원문과 문제은행을 다시 전수 대조하거나 원문 이미지를 검증하려면 먼저 검수용 Python 패키지를 설치한 뒤 아래 스크립트를 실행합니다.
+
+```powershell
+python -m pip install -r scripts/requirements-source-audit.txt
+python scripts/audit-source-fidelity.py
+python scripts/verify-question-assets.py
+```
+
+`audit-source-fidelity.py`는 91개 PDF의 4,550문항을 위치 기준으로 대조하고, `verify-question-assets.py`는 추출된 원문 이미지의 크기와 SHA-256 체크섬을 확인합니다.
 
 ## GitHub Pages 배포
 
