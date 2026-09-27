@@ -655,6 +655,19 @@ function HomeView({
 
   const previewCount = useMemo(() => buildPool(options).length, [buildPool, options]);
   const selectedMode = modeMeta.find((mode) => mode.id === options.mode) ?? modeMeta[3];
+  const examsNewestFirst = useMemo(
+    () => [...bank.exams].sort((left, right) => right.date.localeCompare(left.date)),
+    [bank.exams],
+  );
+  const examYears = useMemo(
+    () => [...new Set(examsNewestFirst.map((exam) => exam.year))],
+    [examsNewestFirst],
+  );
+  const selectedExam = bank.exams.find((exam) => exam.date === options.examDate);
+  const selectedExamYear = selectedExam?.year ?? examYears[0] ?? bank.meta.latestYear;
+  const examsForSelectedYear = examsNewestFirst.filter(
+    (exam) => exam.year === selectedExamYear,
+  );
   const attempts = Object.values(progress.questions).reduce(
     (total, item) => total + item.attempts,
     0,
@@ -799,21 +812,64 @@ function HomeView({
 
               {options.mode === "round" ? (
                 <fieldset>
-                  <label htmlFor="exam-date" className="mb-2 block text-sm font-extrabold">
-                    시험 회차
-                  </label>
-                  <NativeSelect
-                    id="exam-date"
-                    className="h-12 w-full rounded-xl"
-                    value={options.examDate}
-                    onChange={(event) => update("examDate", event.target.value)}
-                  >
-                    {[...bank.exams].reverse().map((exam) => (
-                      <NativeSelectOption key={exam.date} value={exam.date}>
-                        {formatExam(exam.date, exam.round)} · {exam.questionIds.length}문제
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
+                  <legend className="text-sm font-extrabold">시험 회차</legend>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    연도를 고른 뒤 해당 연도의 회차를 선택하세요.
+                  </p>
+
+                  <div className="mt-4">
+                    <label htmlFor="exam-year" className="mb-2 block text-xs font-bold text-muted-foreground">
+                      연도
+                    </label>
+                    <NativeSelect
+                      id="exam-year"
+                      className="h-12 w-full rounded-xl font-bold"
+                      value={String(selectedExamYear)}
+                      onChange={(event) => {
+                        const year = Number(event.target.value);
+                        const newestExam = examsNewestFirst.find((exam) => exam.year === year);
+                        if (newestExam) update("examDate", newestExam.date);
+                      }}
+                    >
+                      {examYears.map((year) => (
+                        <NativeSelectOption key={year} value={year}>
+                          {year}년
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label={`${selectedExamYear}년 시험 회차`}>
+                    {examsForSelectedYear.map((exam) => {
+                      const selected = exam.date === options.examDate;
+                      return (
+                        <button
+                          key={exam.date}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => update("examDate", exam.date)}
+                          className={`relative min-h-24 rounded-2xl border p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
+                            selected
+                              ? "border-primary bg-primary/8 shadow-sm ring-1 ring-primary/20"
+                              : "border-border bg-background hover:border-primary/45 hover:bg-accent"
+                          }`}
+                        >
+                          {selected && (
+                            <span className="absolute right-2.5 top-2.5 grid size-5 place-items-center rounded-full bg-primary text-primary-foreground">
+                              <Check className="size-3.5" strokeWidth={3} />
+                            </span>
+                          )}
+                          <span className="block text-sm font-black">제{String(exam.round).padStart(2, "0")}회</span>
+                          <span className="mt-1 block text-xs font-semibold text-muted-foreground">
+                            {exam.date.slice(5).replace("-", ".")}
+                          </span>
+                          <span className="mt-3 block text-xs text-muted-foreground">
+                            {exam.questionIds.length}문제
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </fieldset>
               ) : (
                 <>
