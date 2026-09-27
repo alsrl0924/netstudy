@@ -399,6 +399,7 @@ function AppHeader({
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [googleConnecting, setGoogleConnecting] = useState(false);
+  const [homePressed, setHomePressed] = useState(false);
   const accountEmail = cloud.user?.email ?? "";
   const accountInitial = accountEmail.slice(0, 1).toUpperCase() || "U";
   const cloudStatus =
@@ -412,19 +413,47 @@ function AppHeader({
             ? "동기화 확인 필요"
             : "게스트 모드";
 
+  useEffect(() => {
+    if (!homePressed) return;
+    const timer = window.setTimeout(() => setHomePressed(false), 260);
+    return () => window.clearTimeout(timer);
+  }, [homePressed]);
+
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-border/80 bg-background/92 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[1480px] items-center gap-2 px-3 sm:gap-3 sm:px-7">
-          <button className="flex min-w-0 items-center gap-3" onClick={() => onView("home")}>
-            <span className="grid size-10 shrink-0 place-items-center rounded-[14px] bg-primary text-primary-foreground shadow-sm">
+          <button
+            type="button"
+            aria-label="홈으로 이동"
+            aria-current={view === "home" ? "page" : undefined}
+            className={`group flex min-w-0 items-center gap-3 rounded-2xl px-1.5 py-1 transition-all duration-150 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.96] ${
+              homePressed
+                ? "scale-[0.96] bg-primary/12 ring-2 ring-primary/30"
+                : view === "home"
+                  ? "bg-secondary/85 hover:bg-secondary"
+                  : "hover:bg-accent"
+            }`}
+            onClick={() => {
+              setHomePressed(true);
+              onView("home");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          >
+            <span
+              className={`grid size-10 shrink-0 place-items-center rounded-[14px] bg-primary text-primary-foreground shadow-sm transition-transform duration-150 ${
+                homePressed ? "scale-90" : "group-active:scale-90"
+              }`}
+            >
               <Network className="size-5" strokeWidth={2.2} />
             </span>
             <span className="hidden min-w-0 text-left min-[560px]:block">
               <span className="block truncate text-[0.9375rem] font-extrabold tracking-[-0.02em]">
-                네트워크관리사 2급
+                네트워크관리사
               </span>
-              <span className="hidden text-xs text-muted-foreground sm:block">기출 학습실</span>
+              <span className="hidden text-xs font-semibold text-muted-foreground sm:block">
+                문제은행
+              </span>
             </span>
           </button>
 
