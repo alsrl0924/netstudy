@@ -8,6 +8,7 @@ import {
   BookOpenCheck,
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
@@ -56,6 +57,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -649,6 +651,7 @@ function HomeView({
   continueSavedSession: () => boolean;
 }) {
   const [emptyMessage, setEmptyMessage] = useState("");
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const [hasSavedSession] = useState(() =>
     typeof window === "undefined" ? false : Boolean(window.localStorage.getItem(SESSION_KEY)),
   );
@@ -818,25 +821,62 @@ function HomeView({
                   </p>
 
                   <div className="mt-4">
-                    <label htmlFor="exam-year" className="mb-2 block text-xs font-bold text-muted-foreground">
+                    <span className="mb-2 block text-xs font-bold text-muted-foreground">
                       연도
-                    </label>
-                    <NativeSelect
-                      id="exam-year"
-                      className="h-12 w-full rounded-xl font-bold"
-                      value={String(selectedExamYear)}
-                      onChange={(event) => {
-                        const year = Number(event.target.value);
-                        const newestExam = examsNewestFirst.find((exam) => exam.year === year);
-                        if (newestExam) update("examDate", newestExam.date);
-                      }}
-                    >
-                      {examYears.map((year) => (
-                        <NativeSelectOption key={year} value={year}>
-                          {year}년
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                    </span>
+                    <Popover open={yearPickerOpen} onOpenChange={setYearPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="시험 연도 선택"
+                          className="flex h-12 w-full items-center justify-between rounded-xl border border-input bg-background px-4 text-sm font-extrabold shadow-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                        >
+                          <span className="flex items-center gap-2">
+                            <CalendarDays className="size-4 text-muted-foreground" />
+                            {selectedExamYear}년
+                          </span>
+                          <ChevronDown
+                            className={`size-4 text-muted-foreground transition-transform ${
+                              yearPickerOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="start"
+                        side="bottom"
+                        sideOffset={6}
+                        className="w-[min(22rem,calc(100vw-2rem))] rounded-2xl p-3"
+                      >
+                        <p className="px-1 pb-2 text-sm font-extrabold">연도 선택</p>
+                        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                          {examYears.map((year) => {
+                            const selected = year === selectedExamYear;
+                            return (
+                              <button
+                                key={year}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => {
+                                  const newestExam = examsNewestFirst.find(
+                                    (exam) => exam.year === year,
+                                  );
+                                  if (newestExam) update("examDate", newestExam.date);
+                                  setYearPickerOpen(false);
+                                }}
+                                className={`h-10 rounded-xl text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
+                                  selected
+                                    ? "bg-primary text-primary-foreground"
+                                    : "hover:bg-accent"
+                                }`}
+                              >
+                                {year}년
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label={`${selectedExamYear}년 시험 회차`}>
