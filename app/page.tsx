@@ -27,6 +27,7 @@ import {
   Play,
   RotateCcw,
   RefreshCw,
+  Search,
   Shuffle,
   Sun,
   Target,
@@ -48,6 +49,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -86,7 +88,16 @@ import {
   yearStart,
 } from "@/lib/study";
 
-type View = "home" | "session" | "profile";
+type View = "home" | "wrong-notes" | "session" | "profile";
+type WrongNoteStatus = "all" | "needs-review" | "recovered";
+type WrongNoteSort = "recent" | "most-wrong" | "subject";
+type WrongNoteFilters = {
+  query: string;
+  subject: string;
+  minimumWrong: number;
+  status: WrongNoteStatus;
+  sort: WrongNoteSort;
+};
 type ActiveSession = {
   options: SessionOptions;
   questionIds: string[];
@@ -94,6 +105,16 @@ type ActiveSession = {
   answers: Record<string, number>;
   gradedIds: string[];
   submitted: boolean;
+  returnView?: Exclude<View, "session">;
+  returnScrollY?: number;
+};
+
+const defaultWrongNoteFilters: WrongNoteFilters = {
+  query: "",
+  subject: "all",
+  minimumWrong: 1,
+  status: "all",
+  sort: "recent",
 };
 
 const modeMeta: Array<{
@@ -139,6 +160,7 @@ export default function HomePage() {
   const [progress, setProgress] = useState<ProgressStore>(EMPTY_STORE);
   const [hydrated, setHydrated] = useState(false);
   const [view, setView] = useState<View>("home");
+  const [wrongNoteFilters, setWrongNoteFilters] = useState(defaultWrongNoteFilters);
   const [options, setOptions] = useState<SessionOptions>(defaultOptions);
   const [active, setActive] = useState<ActiveSession | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -194,6 +216,11 @@ export default function HomePage() {
       preferences: { ...current.preferences, ...update },
       preferencesUpdatedAt: new Date().toISOString(),
     }));
+  }
+
+  function navigateTo(nextView: View) {
+    setView(nextView);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function buildPool(nextOptions: SessionOptions) {
@@ -276,6 +303,35 @@ export default function HomePage() {
       answers: {},
       gradedIds: [],
       submitted: false,
+      returnView: "home",
+    });
+    setView("session");
+    window.scrollTo({ top: 0 });
+    return true;
+  }
+
+  function startWrongNoteSession(questionIds: string[]) {
+    if (!bank || !questionIds.length) return false;
+    const validQuestionIds = questionIds.filter((id) =>
+      bank.questions.some((question) => question.id === id),
+    );
+    if (!validQuestionIds.length) return false;
+    setActive({
+      options: {
+        ...defaultOptions,
+        mode: "wrong",
+        type: "study",
+        yearRange: "all",
+        subject: "all",
+        count: "all",
+      },
+      questionIds: validQuestionIds,
+      index: 0,
+      answers: {},
+      gradedIds: [],
+      submitted: false,
+      returnView: "wrong-notes",
+      returnScrollY: questionIds.length === 1 ? window.scrollY : 0,
     });
     setView("session");
     window.scrollTo({ top: 0 });
@@ -316,13 +372,17 @@ export default function HomePage() {
 
   return (
     <main className={dark ? "dark" : ""}>
-      <div className="min-h-screen bg-background text-foreground">
+      <div
+        className={`min-h-screen bg-background text-foreground ${
+          view === "session" ? "" : "pb-24 md:pb-0"
+        }`}
+      >
         <AppHeader
           view={view}
           dark={dark}
           fontScale={fontScale}
           cloud={cloud}
-          onView={setView}
+          onView={navigateTo}
           onToggleDark={() => updatePreference({ dark: !dark })}
           onFontScale={(value) => updatePreference({ fontScale: value })}
         />
@@ -336,6 +396,17 @@ export default function HomePage() {
             buildPool={buildPool}
             startSession={startSession}
             continueSavedSession={continueSavedSession}
+            onOpenWrongNotes={() => navigateTo("wrong-notes")}
+          />
+        )}
+
+        {view === "wrong-notes" && (
+          <WrongNotesView
+            bank={bank}
+            progress={progress}
+            filters={wrongNoteFilters}
+            setFilters={setWrongNoteFilters}
+            onStartQuestions={startWrongNoteSession}
           />
         )}
 
@@ -348,9 +419,12 @@ export default function HomePage() {
             progress={progress}
             setProgress={setProgress}
             onExit={() => {
-              setView("home");
+              const returnScrollY = active.returnScrollY ?? 0;
+              setView(active.returnView ?? "home");
               setActive(null);
+              window.setTimeout(() => window.scrollTo({ top: returnScrollY }), 0);
             }}
+            exitLabel={active.returnView === "wrong-notes" ? "오답 노트로" : "나가기"}
           />
         )}
 
@@ -359,6 +433,7 @@ export default function HomePage() {
             bank={bank}
             progress={progress}
             cloud={cloud}
+            onOpenWrongNotes={() => navigateTo("wrong-notes")}
             onReset={async () => {
               const cleared = await cloud.clearRemote();
               if (!cleared) return;
@@ -371,6 +446,14 @@ export default function HomePage() {
               window.localStorage.removeItem(SESSION_KEY);
               setActive(null);
             }}
+          />
+        )}
+
+        {view !== "session" && (
+          <MobileNavigation
+            view={view}
+            wrongCount={Object.values(progress.questions).filter((item) => item.wrong > 0).length}
+            onView={navigateTo}
           />
         )}
       </div>
@@ -464,6 +547,13 @@ function AppHeader({
               <Home className="size-4" /> 문제 풀이
             </Button>
             <Button
+              variant={view === "wrong-notes" ? "secondary" : "ghost"}
+              className="gap-2 rounded-xl"
+              onClick={() => onView("wrong-notes")}
+            >
+              <RotateCcw className="size-4" /> 오답 노트
+            </Button>
+            <Button
               variant={view === "profile" ? "secondary" : "ghost"}
               className="gap-2 rounded-xl"
               onClick={() => onView("profile")}
@@ -519,15 +609,6 @@ function AppHeader({
                 </span>
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="icon"
-              className="rounded-xl md:hidden"
-              aria-label={view === "profile" ? "문제 풀이" : "나의 학습"}
-              onClick={() => onView(view === "profile" ? "home" : "profile")}
-            >
-              {view === "profile" ? <Home className="size-4" /> : <BarChart3 className="size-4" />}
-            </Button>
           </div>
         </div>
       </header>
@@ -637,6 +718,63 @@ function AppHeader({
   );
 }
 
+function MobileNavigation({
+  view,
+  wrongCount,
+  onView,
+}: {
+  view: View;
+  wrongCount: number;
+  onView: (view: View) => void;
+}) {
+  const items: Array<{
+    id: Exclude<View, "session">;
+    label: string;
+    icon: typeof Home;
+  }> = [
+    { id: "home", label: "문제 풀이", icon: Home },
+    { id: "wrong-notes", label: "오답 노트", icon: RotateCcw },
+    { id: "profile", label: "나의 학습", icon: BarChart3 },
+  ];
+
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 px-3 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_30px_rgba(15,23,42,.08)] backdrop-blur-xl md:hidden"
+      aria-label="모바일 주요 메뉴"
+    >
+      <div className="mx-auto grid max-w-md grid-cols-3 gap-2">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const active = view === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-current={active ? "page" : undefined}
+              onClick={() => onView(item.id)}
+              className={`relative flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[0.6875rem] font-extrabold transition-colors ${
+                active
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              <span className="relative">
+                <Icon className="size-5" />
+                {item.id === "wrong-notes" && wrongCount > 0 && (
+                  <span className="absolute -right-3 -top-2 min-w-4 rounded-full bg-rose-500 px-1 text-center text-[0.5625rem] leading-4 text-white">
+                    {wrongCount > 99 ? "99+" : wrongCount}
+                  </span>
+                )}
+              </span>
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 function GoogleIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5 shrink-0">
@@ -668,6 +806,7 @@ function HomeView({
   buildPool,
   startSession,
   continueSavedSession,
+  onOpenWrongNotes,
 }: {
   bank: QuestionBank;
   progress: ProgressStore;
@@ -676,6 +815,7 @@ function HomeView({
   buildPool: (options: SessionOptions) => Question[];
   startSession: (options?: SessionOptions) => boolean;
   continueSavedSession: () => boolean;
+  onOpenWrongNotes: () => void;
 }) {
   const [emptyMessage, setEmptyMessage] = useState("");
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
@@ -1065,10 +1205,314 @@ function HomeView({
               >
                 <Play className="size-4" fill="currentColor" /> 시작하기
               </Button>
+              {options.mode === "wrong" && (
+                <Button
+                  variant="ghost"
+                  className="mt-2 h-11 w-full gap-2 rounded-xl text-blue-100 hover:bg-white/10 hover:text-white"
+                  onClick={onOpenWrongNotes}
+                >
+                  <ListChecks className="size-4" /> 오답 목록 보기
+                </Button>
+              )}
             </div>
           </aside>
         </div>
       </section>
+    </div>
+  );
+}
+
+function WrongNotesView({
+  bank,
+  progress,
+  filters,
+  setFilters,
+  onStartQuestions,
+}: {
+  bank: QuestionBank;
+  progress: ProgressStore;
+  filters: WrongNoteFilters;
+  setFilters: React.Dispatch<React.SetStateAction<WrongNoteFilters>>;
+  onStartQuestions: (questionIds: string[]) => boolean;
+}) {
+  const { query, subject, minimumWrong, status, sort } = filters;
+  const questionById = useMemo(
+    () => new Map(bank.questions.map((question) => [question.id, question])),
+    [bank.questions],
+  );
+
+  const wrongNotes = useMemo(() => {
+    return bank.clusters
+      .map((cluster) => {
+        const item = progress.questions[cluster.id];
+        if (!item || item.wrong < 1) return null;
+        const lastWrongAttempt = [...item.history]
+          .reverse()
+          .find((attempt) => !attempt.correct);
+        const latestOccurrence = cluster.occurrenceIds
+          .map((id) => questionById.get(id))
+          .filter((question): question is Question => Boolean(question))
+          .sort(
+            (left, right) =>
+              right.examDate.localeCompare(left.examDate) || right.number - left.number,
+          )[0];
+        const question =
+          questionById.get(lastWrongAttempt?.questionId ?? "") ??
+          latestOccurrence ??
+          questionById.get(cluster.representativeId);
+        if (!question) return null;
+        const lastAttempt = item.history.at(-1);
+        return {
+          clusterId: cluster.id,
+          question,
+          progress: item,
+          recovered: lastAttempt?.correct === true,
+          lastWrongAt: lastWrongAttempt?.at ?? item.lastAnsweredAt ?? "",
+        };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          clusterId: string;
+          question: Question;
+          progress: ProgressStore["questions"][string];
+          recovered: boolean;
+          lastWrongAt: string;
+        } => Boolean(item),
+      );
+  }, [bank.clusters, progress.questions, questionById]);
+
+  const filteredNotes = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return wrongNotes
+      .filter(({ question, progress: item, recovered }) => {
+        if (subject !== "all" && question.subject !== subject) return false;
+        if (item.wrong < minimumWrong) return false;
+        if (status === "needs-review" && recovered) return false;
+        if (status === "recovered" && !recovered) return false;
+        if (
+          normalizedQuery &&
+          !cleanDisplayText(question.stem).toLowerCase().includes(normalizedQuery)
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .sort((left, right) => {
+        if (sort === "most-wrong") {
+          return (
+            right.progress.wrong - left.progress.wrong ||
+            right.lastWrongAt.localeCompare(left.lastWrongAt)
+          );
+        }
+        if (sort === "subject") {
+          return (
+            left.question.subject.localeCompare(right.question.subject, "ko") ||
+            right.lastWrongAt.localeCompare(left.lastWrongAt)
+          );
+        }
+        return (
+          right.lastWrongAt.localeCompare(left.lastWrongAt) ||
+          right.progress.wrong - left.progress.wrong
+        );
+      });
+  }, [minimumWrong, query, sort, status, subject, wrongNotes]);
+
+  const needsReviewCount = wrongNotes.filter((item) => !item.recovered).length;
+  const recoveredCount = wrongNotes.length - needsReviewCount;
+
+  return (
+    <div className="mx-auto max-w-[1240px] px-4 py-7 sm:px-7 lg:py-10">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <Badge variant="secondary" className="mb-2 rounded-lg">
+            한번이라도 틀린 고유 문제
+          </Badge>
+          <h1 className="text-[clamp(1.8rem,4vw,2.7rem)] font-black tracking-[-0.045em]">
+            오답 노트
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            문제를 선택하면 선지와 원문을 열어 한 문제씩 다시 풀 수 있습니다.
+          </p>
+        </div>
+        <Button
+          size="lg"
+          className="h-12 gap-2 rounded-xl font-black"
+          disabled={!filteredNotes.length}
+          onClick={() =>
+            onStartQuestions(shuffled(filteredNotes.map((item) => item.question.id)))
+          }
+        >
+          <Shuffle className="size-4" /> 현재 목록 무작위로 풀기
+        </Button>
+      </div>
+
+      <section className="mt-6 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <p className="text-xs font-bold text-muted-foreground">역대 오답</p>
+          <p className="mt-1 text-2xl font-black">{wrongNotes.length.toLocaleString()}문제</p>
+        </div>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-950 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">
+          <p className="text-xs font-bold opacity-70">복습 필요</p>
+          <p className="mt-1 text-2xl font-black">{needsReviewCount.toLocaleString()}문제</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+          <p className="text-xs font-bold opacity-70">다시 맞힘</p>
+          <p className="mt-1 text-2xl font-black">{recoveredCount.toLocaleString()}문제</p>
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-[24px] border border-border bg-card p-4 sm:p-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.5fr)_1fr_1fr_1fr_1fr]">
+          <label className="relative block">
+            <span className="sr-only">문제 내용 검색</span>
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, query: event.target.value }))
+              }
+              placeholder="문제 내용 검색"
+              className="h-11 rounded-xl pl-10"
+            />
+          </label>
+          <NativeSelect
+            aria-label="과목 선택"
+            value={subject}
+            onChange={(event) =>
+              setFilters((current) => ({ ...current, subject: event.target.value }))
+            }
+            className="h-11 w-full rounded-xl"
+          >
+            <NativeSelectOption value="all">전체 과목</NativeSelectOption>
+            {bank.subjects.map((item) => (
+              <NativeSelectOption key={item} value={item}>
+                {item}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            aria-label="최소 오답 횟수"
+            value={String(minimumWrong)}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                minimumWrong: Number(event.target.value),
+              }))
+            }
+            className="h-11 w-full rounded-xl"
+          >
+            {[1, 2, 3, 5, 7, 10].map((count) => (
+              <NativeSelectOption key={count} value={count}>
+                {count}회 이상 오답
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            aria-label="복습 상태"
+            value={status}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                status: event.target.value as WrongNoteStatus,
+              }))
+            }
+            className="h-11 w-full rounded-xl"
+          >
+            <NativeSelectOption value="all">모든 상태</NativeSelectOption>
+            <NativeSelectOption value="needs-review">복습 필요</NativeSelectOption>
+            <NativeSelectOption value="recovered">다시 맞힘</NativeSelectOption>
+          </NativeSelect>
+          <NativeSelect
+            aria-label="정렬 방식"
+            value={sort}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                sort: event.target.value as WrongNoteSort,
+              }))
+            }
+            className="h-11 w-full rounded-xl"
+          >
+            <NativeSelectOption value="recent">최근에 틀린 순</NativeSelectOption>
+            <NativeSelectOption value="most-wrong">많이 틀린 순</NativeSelectOption>
+            <NativeSelectOption value="subject">과목 순</NativeSelectOption>
+          </NativeSelect>
+        </div>
+      </section>
+
+      <div className="mt-6 flex items-center justify-between gap-4">
+        <h2 className="text-lg font-black">오답 문제 목록</h2>
+        <span className="text-sm font-bold text-muted-foreground">
+          {filteredNotes.length.toLocaleString()}문제
+        </span>
+      </div>
+
+      {filteredNotes.length ? (
+        <div className="mt-3 grid gap-3">
+          {filteredNotes.map(({ clusterId, question, progress: item, recovered, lastWrongAt }) => {
+            const stem = cleanDisplayText(question.stem).trim();
+            const date = lastWrongAt
+              ? new Date(lastWrongAt).toLocaleDateString("ko-KR", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                })
+              : "기록 없음";
+            return (
+              <button
+                key={clusterId}
+                type="button"
+                onClick={() => onStartQuestions([question.id])}
+                className="group w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:p-5"
+              >
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <span
+                    className={`mt-0.5 grid size-10 shrink-0 place-items-center rounded-xl ${
+                      recovered
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                        : "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200"
+                    }`}
+                  >
+                    {recovered ? <Check className="size-5" /> : <RotateCcw className="size-5" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2 text-xs font-bold text-muted-foreground">
+                      <span>{question.subject}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-rose-600 dark:text-rose-300">
+                        누적 오답 {item.wrong}회
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>{recovered ? "다시 맞힘" : "복습 필요"}</span>
+                    </span>
+                    <span className="mt-2 block text-[0.98rem] font-extrabold leading-7 tracking-[-0.015em] sm:text-base">
+                      {stem || `제${question.number}번 원문 이미지 문제`}
+                    </span>
+                    <span className="mt-2 block text-xs text-muted-foreground">
+                      최근 오답 {date} · {formatExam(question.examDate, question.round)}
+                    </span>
+                  </span>
+                  <ChevronRight className="mt-2 size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-[24px] border border-dashed border-border bg-card px-5 py-14 text-center">
+          <BookOpenCheck className="mx-auto size-10 text-muted-foreground" />
+          <p className="mt-4 font-black">
+            {wrongNotes.length ? "조건에 맞는 오답 문제가 없습니다" : "아직 틀린 문제가 없습니다"}
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {wrongNotes.length
+              ? "검색어나 필터 조건을 바꿔보세요."
+              : "문제를 풀다가 틀리면 이곳에 자동으로 기록됩니다."}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1081,6 +1525,7 @@ function SessionView({
   progress,
   setProgress,
   onExit,
+  exitLabel,
 }: {
   bank: QuestionBank;
   explanations: ExplanationMap;
@@ -1089,6 +1534,7 @@ function SessionView({
   progress: ProgressStore;
   setProgress: React.Dispatch<React.SetStateAction<ProgressStore>>;
   onExit: () => void;
+  exitLabel: string;
 }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
@@ -1225,7 +1671,7 @@ function SessionView({
       <div className="mx-auto max-w-[1480px] px-4 py-5 sm:px-7 lg:py-7">
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <Button variant="outline" size="sm" className="rounded-xl" onClick={onExit}>
-            <ChevronLeft className="size-4" /> 나가기
+            <ChevronLeft className="size-4" /> {exitLabel}
           </Button>
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center justify-between gap-3 text-xs font-bold text-muted-foreground">
@@ -1920,11 +2366,13 @@ function ProfileView({
   bank,
   progress,
   cloud,
+  onOpenWrongNotes,
   onReset,
 }: {
   bank: QuestionBank;
   progress: ProgressStore;
   cloud: ReturnType<typeof useCloudProgress>;
+  onOpenWrongNotes: () => void;
   onReset: () => void | Promise<void>;
 }) {
   const entries = Object.entries(progress.questions);
@@ -1994,27 +2442,32 @@ function ProfileView({
               : "이 기기와 브라우저에서 풀이한 기록을 기준으로 계산합니다."}
           </p>
         </div>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="outline" className="gap-2 rounded-xl text-destructive">
-              <Trash2 className="size-4" /> 학습 기록 초기화
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>모든 학습 기록을 지울까요?</AlertDialogTitle>
-              <AlertDialogDescription>
-                오답 횟수, 클립, 메모와 학습 통계가 모두 삭제됩니다.
-                {cloud.user ? " 클라우드에 저장된 기록도 함께 삭제됩니다." : ""} 삭제한 기록은
-                복구할 수 없습니다.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>취소</AlertDialogCancel>
-              <AlertDialogAction onClick={onReset}>모두 삭제</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <div className="flex flex-wrap gap-2">
+          <Button className="gap-2 rounded-xl" onClick={onOpenWrongNotes}>
+            <RotateCcw className="size-4" /> 오답 노트 열기
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="gap-2 rounded-xl text-destructive">
+                <Trash2 className="size-4" /> 학습 기록 초기화
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>모든 학습 기록을 지울까요?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  오답 횟수, 클립, 메모와 학습 통계가 모두 삭제됩니다.
+                  {cloud.user ? " 클라우드에 저장된 기록도 함께 삭제됩니다." : ""} 삭제한 기록은
+                  복구할 수 없습니다.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>취소</AlertDialogCancel>
+                <AlertDialogAction onClick={onReset}>모두 삭제</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

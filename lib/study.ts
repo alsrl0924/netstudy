@@ -83,6 +83,7 @@ export type QuestionProgress = {
     id: string;
     at: string;
     correct: boolean;
+    questionId?: string;
     subject: string;
     topic: string;
   }>;
@@ -180,6 +181,7 @@ export function recordAttempt(
             id,
             at: now,
             correct,
+            questionId: question.id,
             subject: question.subject,
             topic: inferTopic(question),
           },
