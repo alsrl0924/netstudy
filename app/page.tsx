@@ -717,23 +717,23 @@ function HomeView({
   return (
     <div className="mx-auto grid max-w-[1480px] gap-7 px-4 py-6 sm:px-7 lg:grid-cols-[290px_minmax(0,1fr)] lg:py-8">
       <aside className="space-y-5">
-        <section className="overflow-hidden rounded-[24px] bg-[#0b1f36] p-5 text-white shadow-[0_18px_45px_rgba(7,25,45,.18)]">
+        <section className="overflow-hidden rounded-[24px] border border-[#cfe0f7] bg-[#e5f0ff] p-5 text-[#173a6a] shadow-[0_18px_45px_rgba(37,99,235,.11)] dark:border-[#294463] dark:bg-[#163b60] dark:text-[#edf6ff]">
           <div className="mb-8 flex items-start justify-between">
             <div>
-              <p className="text-xs font-bold text-cyan-200">오늘의 학습</p>
+              <p className="text-xs font-bold text-[#2563eb] dark:text-[#93c5fd]">오늘의 학습</p>
               <p className="mt-1 text-3xl font-black tracking-[-0.04em]">
                 {todayCount.toLocaleString()}문제
               </p>
             </div>
-            <Target className="size-7 text-[#4ee8bd]" />
+            <Target className="size-7 text-[#2563eb] dark:text-[#60a5fa]" />
           </div>
           <div className="flex items-end justify-between text-xs">
-            <span className="text-slate-300">누적 풀이</span>
+            <span className="text-[#62738c] dark:text-[#b9cbe0]">누적 풀이</span>
             <strong>{attempts.toLocaleString()}문제</strong>
           </div>
           <Progress
             value={Math.min(100, todayCount * 5)}
-            className="mt-2 h-2 bg-white/15 [&>div]:bg-[#4ee8bd]"
+            className="mt-2 h-2 bg-[#2563eb]/15 [&>div]:bg-[#2563eb] dark:bg-white/15 dark:[&>div]:bg-[#60a5fa]"
           />
         </section>
 
@@ -763,7 +763,7 @@ function HomeView({
                   <span className="block text-sm font-bold">{mode.label}</span>
                   <span
                     className={`block truncate text-xs ${
-                      active ? "text-slate-300 dark:text-slate-700" : "text-muted-foreground"
+                      active ? "text-blue-100 dark:text-blue-950" : "text-muted-foreground"
                     }`}
                   >
                     {mode.description}
@@ -771,7 +771,7 @@ function HomeView({
                 </span>
                 <span
                   className={`text-[0.6875rem] font-bold ${
-                    active ? "text-cyan-200 dark:text-cyan-900" : "text-muted-foreground"
+                    active ? "text-blue-100 dark:text-blue-950" : "text-muted-foreground"
                   }`}
                 >
                   {navCount(mode.id, bank, progress)}
@@ -802,14 +802,14 @@ function HomeView({
         </div>
 
         {hasSavedSession && (
-          <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-cyan-950 sm:flex-row sm:items-center sm:justify-between dark:border-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">
+          <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100">
             <div>
               <p className="font-extrabold">진행 중인 학습이 있습니다</p>
               <p className="text-sm opacity-75">마지막으로 풀던 위치에서 이어갈 수 있습니다.</p>
             </div>
             <Button
               variant="outline"
-              className="rounded-xl border-cyan-300 bg-white/70 dark:bg-black/20"
+              className="rounded-xl border-blue-300 bg-white/70 dark:bg-black/20"
               onClick={continueSavedSession}
             >
               이어 풀기
@@ -1022,11 +1022,11 @@ function HomeView({
             </div>
           </section>
 
-          <aside className="flex flex-col rounded-[26px] bg-[#0b1f36] p-6 text-white shadow-[0_18px_45px_rgba(7,25,45,.16)]">
-            <span className="grid size-12 place-items-center rounded-2xl bg-white/10 text-[#4ee8bd]">
+          <aside className="flex flex-col rounded-[26px] bg-[#173a6a] p-6 text-white shadow-[0_18px_45px_rgba(37,99,235,.16)] dark:bg-[#102238]">
+            <span className="grid size-12 place-items-center rounded-2xl bg-white/10 text-[#7dd3fc]">
               <selectedMode.icon className="size-6" />
             </span>
-            <p className="mt-7 text-sm font-bold text-cyan-200">선택된 문제</p>
+            <p className="mt-7 text-sm font-bold text-blue-200">선택된 문제</p>
             <p className="mt-1 text-4xl font-black tracking-[-0.05em]">
               {previewCount.toLocaleString()}
               <span className="ml-1 text-lg">문제</span>
@@ -1052,7 +1052,7 @@ function HomeView({
               )}
               <Button
                 size="lg"
-                className="h-12 w-full gap-2 rounded-xl bg-[#4ee8bd] font-black text-[#08231d] hover:bg-[#6ef2ca]"
+                className="h-12 w-full gap-2 rounded-xl bg-[#38bdf8] font-black text-[#0c2e4e] hover:bg-[#7dd3fc]"
                 onClick={() => {
                   if (!startSession()) {
                     setEmptyMessage(
@@ -1263,9 +1263,9 @@ function SessionView({
         )}
 
         {active.submitted && (
-          <section className="mb-6 overflow-hidden rounded-[24px] bg-[#0b1f36] p-6 text-white shadow-lg sm:flex sm:items-center sm:justify-between">
+          <section className="mb-6 overflow-hidden rounded-[24px] bg-[#173a6a] p-6 text-white shadow-lg dark:bg-[#102238] sm:flex sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-bold text-cyan-200">시험 결과</p>
+              <p className="text-sm font-bold text-blue-200">시험 결과</p>
               <p className="mt-1 text-4xl font-black tracking-[-0.04em]">
                 {examScore} / {questions.length}
               </p>
@@ -1275,7 +1275,7 @@ function SessionView({
               </p>
             </div>
             <Button
-              className="mt-5 rounded-xl bg-[#4ee8bd] font-black text-[#08231d] sm:mt-0"
+              className="mt-5 rounded-xl bg-[#38bdf8] font-black text-[#0c2e4e] hover:bg-[#7dd3fc] sm:mt-0"
               onClick={onExit}
             >
               학습 홈으로
@@ -1499,7 +1499,7 @@ function StudyQuestion({
 
       <aside
         className={`relative p-5 transition-colors sm:p-8 ${
-          revealed ? "bg-[#f1f8f6] dark:bg-[#0d2924]" : "bg-secondary/35"
+          revealed ? "bg-[#eff6ff] dark:bg-[#102a46]" : "bg-secondary/35"
         }`}
       >
         {revealed ? (
@@ -1563,7 +1563,7 @@ function ExamQuestion({
         onChoose={onChoose}
       />
       {submitted && (
-        <div className="mt-6 rounded-2xl bg-[#f1f8f6] p-5 dark:bg-[#0d2924]">
+        <div className="mt-6 rounded-2xl bg-[#eff6ff] p-5 dark:bg-[#102a46]">
           <ExplanationPanel question={question} explanation={explanation} selected={selected} compact />
         </div>
       )}
@@ -1590,7 +1590,7 @@ function QuestionHead({
     <>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge className="rounded-lg bg-[#0b1f36] text-white">{question.subject}</Badge>
+          <Badge className="rounded-lg bg-primary text-primary-foreground">{question.subject}</Badge>
           {cluster && cluster.totalCount > 1 && (
             <Badge
               variant="outline"
@@ -1611,7 +1611,7 @@ function QuestionHead({
           onClick={onClip}
           className={`grid size-11 shrink-0 place-items-center rounded-xl border transition-colors ${
             clipped
-              ? "border-[#0b1f36] bg-[#0b1f36] text-[#4ee8bd]"
+              ? "border-primary bg-primary text-primary-foreground"
               : "border-border bg-background hover:bg-accent"
           }`}
         >
@@ -1864,7 +1864,7 @@ function QuestionNavigator({
                     : current
                       ? "border-primary bg-primary text-primary-foreground"
                       : answered
-                        ? "border-cyan-300 bg-cyan-50 text-cyan-950"
+                        ? "border-blue-300 bg-blue-50 text-blue-950"
                         : "border-border hover:bg-accent"
               } ${current ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : ""}`}
             >
@@ -2002,7 +2002,7 @@ function ProfileView({
       <section className="mt-5 grid gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-border bg-card p-5">
           <div className="flex items-center gap-3">
-            <span className="grid size-11 place-items-center rounded-xl bg-cyan-100 text-cyan-950 dark:bg-cyan-950 dark:text-cyan-100">
+            <span className="grid size-11 place-items-center rounded-xl bg-blue-100 text-blue-950 dark:bg-blue-950 dark:text-blue-100">
               <CalendarDays className="size-5" />
             </span>
             <div>

@@ -5,51 +5,51 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f5f8fb;
-  --foreground: #10243a;
+  --background: #f4f9ff;
+  --foreground: #14243d;
   --card: #ffffff;
-  --card-foreground: #10243a;
+  --card-foreground: #14243d;
   --popover: #ffffff;
-  --popover-foreground: #10243a;
-  --primary: #0b1f36;
-  --primary-foreground: #f8fbff;
-  --secondary: #e9eff5;
-  --secondary-foreground: #10243a;
-  --muted: #edf2f6;
-  --muted-foreground: #66788c;
-  --accent: #e2f5ef;
-  --accent-foreground: #102f2a;
-  --destructive: #d63b4f;
-  --border: #dce5ed;
-  --input: #dce5ed;
-  --ring: #0b1f36;
-  --chart-1: #0b1f36;
-  --chart-2: #0aa77d;
-  --chart-3: #1687a7;
-  --chart-4: #ec8d28;
-  --chart-5: #d95a6f;
+  --popover-foreground: #14243d;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #e5f0ff;
+  --secondary-foreground: #173a6a;
+  --muted: #edf4fc;
+  --muted-foreground: #62738c;
+  --accent: #e3f4ff;
+  --accent-foreground: #173a6a;
+  --destructive: #d83e55;
+  --border: #d3e3f7;
+  --input: #d3e3f7;
+  --ring: #2563eb;
+  --chart-1: #2563eb;
+  --chart-2: #0ea5e9;
+  --chart-3: #6366f1;
+  --chart-4: #f59e0b;
+  --chart-5: #e85d75;
   --radius: 0.8rem;
 }
 
 .dark {
-  --background: #081420;
-  --foreground: #edf5fb;
-  --card: #0e2030;
-  --card-foreground: #edf5fb;
-  --popover: #102536;
-  --popover-foreground: #edf5fb;
-  --primary: #4ee8bd;
-  --primary-foreground: #08231d;
-  --secondary: #172c3d;
-  --secondary-foreground: #edf5fb;
-  --muted: #152a3b;
-  --muted-foreground: #9fb0bf;
-  --accent: #173c37;
-  --accent-foreground: #dbfff5;
+  --background: #091729;
+  --foreground: #edf6ff;
+  --card: #102238;
+  --card-foreground: #edf6ff;
+  --popover: #132a44;
+  --popover-foreground: #edf6ff;
+  --primary: #60a5fa;
+  --primary-foreground: #07182b;
+  --secondary: #1a3352;
+  --secondary-foreground: #edf6ff;
+  --muted: #162e4a;
+  --muted-foreground: #a6b9cf;
+  --accent: #163b60;
+  --accent-foreground: #e6f3ff;
   --destructive: #ff7182;
-  --border: #24394a;
-  --input: #2d4355;
-  --ring: #4ee8bd;
+  --border: #294463;
+  --input: #345271;
+  --ring: #60a5fa;
 }
 
 @theme inline {
@@ -124,7 +124,7 @@ code {
 
 @media (max-width: 639px) {
   body {
-    background-image: linear-gradient(180deg, rgba(11, 31, 54, 0.025), transparent 220px);
+    background-image: linear-gradient(180deg, rgba(37, 99, 235, 0.045), transparent 220px);
   }
 }
 
