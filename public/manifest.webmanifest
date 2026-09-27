@@ -1,0 +1,19 @@
+{
+  "name": "네트워크관리사 2급 기출 학습실",
+  "short_name": "네트워크 기출",
+  "description": "회차별 기출, 오답, 클립, 랜덤 및 고빈도 문제 학습",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f5f8fb",
+  "theme_color": "#0b1f36",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
