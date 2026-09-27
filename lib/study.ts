@@ -64,6 +64,7 @@ export type Explanation = {
   rationale: string;
   optionExplanations: string[];
   optionDetails?: Array<{ option: string; explanation: string }>;
+  occurrenceOptionExplanations?: Record<string, string[]>;
   concept: string;
   sourceNote?: string;
 };

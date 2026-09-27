@@ -7,9 +7,12 @@ const root = path.resolve(here, "..");
 const sourceDir = path.join(root, "tmp", "notion-pages");
 const bankPath = path.join(root, "public", "data", "question-bank.json");
 const outputPath = path.join(root, "public", "data", "explanations.json");
+const overridePath = path.join(root, "source-data", "explanation-overrides.json");
 
 const bank = JSON.parse(await readFile(bankPath, "utf8"));
+const explanationOverrides = JSON.parse(await readFile(overridePath, "utf8"));
 const questionById = new Map(bank.questions.map((question) => [question.id, question]));
+const clusterById = new Map(bank.clusters.map((cluster) => [cluster.id, cluster]));
 const gradeByCluster = new Map();
 
 function normalizeFetchedText(value) {
@@ -41,6 +44,29 @@ function normalizeKey(value) {
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[^0-9a-z가-힣]/g, "");
+}
+
+function optionSimilarity(left, right) {
+  const a = normalizeKey(left) || plain(String(left ?? "")).toLowerCase();
+  const b = normalizeKey(right) || plain(String(right ?? "")).toLowerCase();
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length);
+  const pairs = (value) => {
+    const result = new Map();
+    for (let index = 0; index < value.length - 1; index += 1) {
+      const pair = value.slice(index, index + 2);
+      result.set(pair, (result.get(pair) ?? 0) + 1);
+    }
+    return result;
+  };
+  const leftPairs = pairs(a);
+  const rightPairs = pairs(b);
+  let overlap = 0;
+  for (const [pair, count] of leftPairs) {
+    overlap += Math.min(count, rightPairs.get(pair) ?? 0);
+  }
+  return (2 * overlap) / Math.max(1, a.length + b.length - 2);
 }
 
 function firstBoundary(text, start, markers) {
@@ -108,7 +134,9 @@ function extractOptionDetails(section, sourceOptions) {
       const labelFromLine = indexMatch ? indexMatch[2] : rawLabel;
       current = {
         index,
-        label: sourceOptions[index] ?? plain(labelFromLine),
+        label: indexMatch
+          ? sourceOptions[index] ?? plain(labelFromLine)
+          : plain(labelFromLine) || sourceOptions[index] || "",
         explanation: plain(afterLabel),
       };
       rows.push(current);
@@ -171,12 +199,140 @@ function cleanConcept(value, rationale) {
       .trim();
     if (!line) continue;
     if (/^(정답이 되는 이유|핵심 개념 완성 정리|함께 공부할 연결 개념|구분|학습 내용|내용|정답 기준|핵심 원리|구분 기준|판별 단서|함께 구분할 것|자주 틀리는 함정)$/.test(line)) continue;
+    if (/^(undefined|null|none|n\/a|-+)$/i.test(line)) continue;
     const key = normalizeKey(line);
     if (!key || key === rationaleKey || seen.has(key)) continue;
     seen.add(key);
     lines.push(line);
   }
   return lines.join("\n");
+}
+
+function sentences(value) {
+  return String(value ?? "")
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter((item) => normalizeKey(item).length >= 8);
+}
+
+function neutralizeOptionExplanation(value) {
+  return String(value ?? "")
+    .replace(/[⭕❌✅]\s*/g, "")
+    .replace(/정답 기준(?:과 어긋난다|에 부합한다)\.?\s*/g, "")
+    .replace(/이 선택지는 교사용 정답에 해당합니다\.?\s*/g, "")
+    .replace(/‘[^’]+’은 이 회차에서 묻는 조건을 충족하지 않습니다\.?\s*/g, "")
+    .replace(/따라서 이 회차에서 묻는 조건의 정답은 ‘[^’]+’입니다\.?\s*/g, "")
+    .replace(/교사용 정답은 ‘[^’]+’이며,\s*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function enrichExplanation(clusterId, explanation) {
+  const cluster = clusterById.get(clusterId);
+  const questions = cluster?.occurrenceIds.map((id) => questionById.get(id)).filter(Boolean) ?? [];
+  const representative = cluster && questionById.get(cluster.representativeId);
+  if (!representative || !questions.length) return explanation;
+
+  const contexts = new Map();
+  for (const question of questions) {
+    question.options.forEach((option, index) => {
+      const key = normalizeKey(option) || plain(option).toLowerCase();
+      if (!key) return;
+      const context = contexts.get(key) ?? {
+        option: plain(option),
+        correct: false,
+        wrong: false,
+        correctOptions: new Set(),
+      };
+      if (index + 1 === question.answer) context.correct = true;
+      else context.wrong = true;
+      context.correctOptions.add(plain(question.options[question.answer - 1]));
+      contexts.set(key, context);
+    });
+  }
+
+  const factCandidates = [
+    explanation.rationale,
+    ...explanation.optionExplanations,
+    ...sentences(explanation.concept),
+  ].flatMap(sentences);
+
+  const explainContext = (context) => {
+    if (context.correct && !context.wrong) {
+      return `이 선택지는 교사용 정답에 해당합니다. ${explanation.rationale}`;
+    }
+    const matchingFact = factCandidates
+      .map((fact) => ({ fact, score: optionSimilarity(context.option, fact) }))
+      .filter(({ score }) => score >= 0.12)
+      .sort((left, right) => right.score - left.score)[0]?.fact;
+    const correctOptions = [...context.correctOptions].filter(Boolean).join(" 또는 ");
+    if (matchingFact && normalizeKey(matchingFact) !== normalizeKey(explanation.rationale)) {
+      return `${matchingFact} 따라서 이 회차에서 묻는 조건의 정답은 ‘${correctOptions}’입니다.`;
+    }
+    return `‘${context.option}’은 이 회차에서 묻는 조건을 충족하지 않습니다. 교사용 정답은 ‘${correctOptions}’이며, ${explanation.rationale}`;
+  };
+
+  const details = explanation.optionDetails.map((detail) => ({ ...detail }));
+  for (const context of contexts.values()) {
+    const best = details
+      .map((detail, index) => ({ index, score: optionSimilarity(context.option, detail.option) }))
+      .sort((left, right) => right.score - left.score)[0];
+    if (!best || best.score < 0.28) {
+      details.push({ option: context.option, explanation: explainContext(context) });
+    }
+  }
+
+  for (const detail of details) {
+    const currentLength = normalizeKey(detail.explanation).length;
+    if (currentLength >= 20) continue;
+    const context = [...contexts.values()]
+      .map((item) => ({ item, score: optionSimilarity(item.option, detail.option) }))
+      .sort((left, right) => right.score - left.score)[0]?.item;
+    if (!context) continue;
+    detail.explanation = `${detail.explanation} ${explainContext(context)}`.trim();
+  }
+
+  let rationale = explanation.rationale;
+  if (normalizeKey(rationale).length < 35) {
+    const supportingConcept = sentences(explanation.concept).find(
+      (line) => !normalizeKey(rationale).includes(normalizeKey(line)),
+    );
+    if (supportingConcept) rationale = `${rationale} ${supportingConcept}`;
+  }
+
+  let concept = explanation.concept;
+  if (normalizeKey(concept).length < 70) {
+    concept = `${concept}\n\n핵심 정리\n${rationale}`.trim();
+  }
+
+  const occurrenceOptionExplanations = {};
+  for (const question of questions) {
+    occurrenceOptionExplanations[question.id] = question.options.map((option, index) => {
+      const exact = details.find((detail) => normalizeKey(detail.option) === normalizeKey(option));
+      const generatedFallback = /이 회차에서 묻는 조건|교사용 정답은/.test(
+        exact?.explanation ?? "",
+      );
+      let text = generatedFallback ? "" : neutralizeOptionExplanation(exact?.explanation);
+      const correct = index + 1 === question.answer;
+      const correctOption = plain(question.options[question.answer - 1]);
+      if (normalizeKey(text).length < 20) {
+        text = correct
+          ? `${text} ${rationale}`.trim()
+          : `${text} ‘${plain(option)}’은 문제에서 요구한 조건에 해당하지 않습니다. 정답 선택지는 ‘${correctOption}’이며, ${rationale}`.trim();
+      }
+      return text;
+    });
+  }
+  const optionExplanations = occurrenceOptionExplanations[representative.id];
+
+  return {
+    ...explanation,
+    rationale,
+    concept,
+    optionExplanations,
+    optionDetails: details,
+    occurrenceOptionExplanations,
+  };
 }
 
 function findClusterId(section) {
@@ -253,11 +409,40 @@ for (const file of files) {
   }
 }
 
+for (const [clusterId, override] of Object.entries(explanationOverrides)) {
+  if (!explanations[clusterId]) {
+    throw new Error(`${clusterId}: 보강 대상 해설이 원본 데이터에 없습니다.`);
+  }
+  const cluster = clusterById.get(clusterId);
+  const representative = cluster && questionById.get(cluster.representativeId);
+  if (!representative) {
+    throw new Error(`${clusterId}: 대표 문항을 찾지 못했습니다.`);
+  }
+  if (!Array.isArray(override.optionExplanations) || override.optionExplanations.length !== 4) {
+    throw new Error(`${clusterId}: 보강 선택지 해설은 4개여야 합니다.`);
+  }
+  explanations[clusterId] = {
+    ...explanations[clusterId],
+    ...override,
+    optionDetails: representative.options.map((option, index) => ({
+      option,
+      explanation: override.optionExplanations[index],
+    })),
+    sourceNote: `PDF 원문 지문 대조 보강 · ${representative.sourceFile} · Q${representative.number}`,
+    answer: representative.answer,
+  };
+}
+
+for (const [clusterId, explanation] of Object.entries(explanations)) {
+  explanations[clusterId] = enrichExplanation(clusterId, explanation);
+}
+
 const audit = {
   pages: files.length,
   explanations: Object.keys(explanations).length,
+  overrides: Object.keys(explanationOverrides).length,
   missingRationale: Object.values(explanations).filter((item) => !item.rationale).length,
-  incompleteOptions: Object.values(explanations).filter((item) => item.optionDetails.length !== 4).length,
+  incompleteOptions: Object.values(explanations).filter((item) => item.optionDetails.length < 4).length,
   missingConcept: Object.values(explanations).filter((item) => !item.concept).length,
 };
 

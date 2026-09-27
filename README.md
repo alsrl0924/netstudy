@@ -54,6 +54,7 @@ npm run data:explanations
 
 - `data:build`: 상위 폴더의 PDF 추출·중복 검수 결과로 문제은행을 다시 만듭니다.
 - `data:explanations`: `tmp/notion-pages`에 저장된 노션 원문 29페이지를 읽어 1,197개 상세 해설과 최종 S/A/B/C 등급을 연결합니다.
+- `audit:explanations`: 1,197개 상세 해설의 필수 항목, 금지된 빈 값, 네 선택지 연결 상태를 전수 검사합니다.
 - `data:all`: 두 작업을 순서대로 실행합니다.
 
 문제 문장과 선택지는 표시 과정에서 줄바꿈·공백만 정리하며 내용을 축약하거나 바꾸지 않습니다.

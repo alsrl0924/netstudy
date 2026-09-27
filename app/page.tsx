@@ -1718,7 +1718,7 @@ function ExplanationPanel({
 }) {
   const correct = selected === question.answer;
   const optionExplanations = question.options.map((option, index) =>
-    resolveOptionExplanation(option, index, explanation),
+    resolveOptionExplanation(question.id, option, index, explanation),
   );
   if (!explanation) {
     return (
@@ -1781,7 +1781,7 @@ function ExplanationPanel({
               <li key={option}>
                 <strong>
                   {["①", "②", "③", "④"][index]}{" "}
-                  {index + 1 === question.answer ? "옳음." : "틀림."}
+                  {index + 1 === question.answer ? "정답." : "오답."}
                 </strong>{" "}
                 {optionExplanations[index] ?? "해설을 검수하고 있습니다."}
               </li>
@@ -1800,10 +1800,11 @@ function ExplanationPanel({
 }
 
 function normalizeOptionKey(value: string) {
-  return cleanDisplayText(value)
+  const cleaned = cleanDisplayText(value);
+  return cleaned
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[^0-9a-z가-힣]/g, "");
+    .replace(/[^0-9a-z가-힣]/g, "") || cleaned.toLowerCase();
 }
 
 function optionSimilarity(left: string, right: string) {
@@ -1830,11 +1831,14 @@ function optionSimilarity(left: string, right: string) {
 }
 
 function resolveOptionExplanation(
+  questionId: string,
   option: string,
   index: number,
   explanation?: Explanation,
 ) {
   if (!explanation) return undefined;
+  const occurrenceExplanation = explanation.occurrenceOptionExplanations?.[questionId]?.[index];
+  if (occurrenceExplanation) return occurrenceExplanation;
   const details = explanation.optionDetails ?? [];
   if (details.length) {
     const best = details
