@@ -13,9 +13,12 @@ export function PwaRegister() {
       return;
     }
 
-    navigator.serviceWorker.register("./sw.js").catch(() => {
-      // The site remains fully usable online when service-worker registration fails.
-    });
+    navigator.serviceWorker
+      .register("./sw.js", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch(() => {
+        // The site remains fully usable online when service-worker registration fails.
+      });
   }, []);
 
   return null;
