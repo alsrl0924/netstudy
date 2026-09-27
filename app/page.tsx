@@ -106,7 +106,7 @@ const modeMeta: Array<{
   { id: "wrong", label: "오답만 다시", description: "틀린 횟수를 기준으로 집중 복습", icon: RotateCcw },
   { id: "clips", label: "클립한 문제", description: "헷갈려서 저장한 문제만 모아서", icon: Bookmark },
   { id: "random", label: "전체 문제 랜덤", description: "연도와 과목을 골라 무작위 출제", icon: Shuffle },
-  { id: "frequent", label: "고빈도 문제", description: "선택한 기간에 자주 나온 순서", icon: Flame },
+  { id: "frequent", label: "고빈도 문제", description: "선택한 기간의 빈출 문제를 무작위 출제", icon: Flame },
 ];
 
 const defaultOptions: SessionOptions = {
@@ -240,11 +240,6 @@ export default function HomePage() {
         .filter(
           ({ cluster }) =>
             (progress.questions[cluster.id]?.wrong ?? 0) >= nextOptions.minimumWrong,
-        )
-        .sort(
-          (left, right) =>
-            (progress.questions[right.cluster.id]?.wrong ?? 0) -
-            (progress.questions[left.cluster.id]?.wrong ?? 0),
         );
     } else if (nextOptions.mode === "clips") {
       candidates = candidates.filter(
@@ -259,13 +254,16 @@ export default function HomePage() {
             right.cluster.totalCount - left.cluster.totalCount ||
             right.latest.examDate.localeCompare(left.latest.examDate),
         );
-    } else {
-      candidates = shuffled(candidates);
     }
 
-    if (nextOptions.mode === "clips") candidates = shuffled(candidates);
     const desired = nextOptions.count === "all" ? candidates.length : Number(nextOptions.count);
-    return candidates.slice(0, desired).map((item) => item.latest);
+    // 고빈도 문제는 출제 횟수가 높은 문제부터 필요한 수만큼 선별한 다음
+    // 풀이 순서만 섞는다. 그 외 비회차 모드는 전체 후보를 먼저 섞는다.
+    const selected =
+      nextOptions.mode === "frequent"
+        ? shuffled(candidates.slice(0, desired))
+        : shuffled(candidates).slice(0, desired);
+    return selected.map((item) => item.latest);
   }
 
   function startSession(nextOptions = options) {
