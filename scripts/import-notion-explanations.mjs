@@ -208,6 +208,47 @@ function cleanConcept(value, rationale) {
   return lines.join("\n");
 }
 
+function cleanConnections(value, concept, rationale) {
+  const cleaned = cleanConcept(value, rationale);
+  const conceptKey = normalizeKey(concept);
+  const seen = new Set();
+  return cleaned
+    .split("\n")
+    .map((line) => line.replace(/^[-•]\s*/, "").trim())
+    .filter((line) => {
+      if (!line) return false;
+      if (
+        /^(정답 개념의 계층과 대표 용도|관련 표준[·ㆍ, ]*전송 매체[·ㆍ, ]*제어 방식|관련 (?:표준|단계).*(?:구조|비교)|정답 개념|혼동 개념|선택지 비교|핵심 정리|정답 선택지\s*[—–:].*)$/.test(
+          line,
+        )
+      ) {
+        return false;
+      }
+      const key = normalizeKey(line);
+      if (!key || seen.has(key) || (conceptKey && conceptKey.includes(key))) return false;
+      const hasExplanation =
+        (line.length >= 6 && /[—–:→]/.test(line)) ||
+        (line.length >= 12 &&
+          /이다|입니다|한다|합니다|사용|역할|기능|계층|주소|방식|구분|위해|제공|프로토콜|표준|장치|번호|전송|관리/.test(
+            line,
+          )) ||
+        (line.length >= 20 && /[.!?]$/.test(line));
+      if (!hasExplanation) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((line) => `• ${line}`)
+    .join("\n");
+}
+
+function sanitizeCombinedConcept(value, rationale) {
+  const [core, ...relatedParts] = String(value ?? "").split(/\n\s*연결 개념\s*\n/);
+  const connections = cleanConnections(relatedParts.join("\n"), core, rationale);
+  return [core.trim(), connections ? `연결 개념\n${connections}` : ""]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function sentences(value) {
   return String(value ?? "")
     .split(/\n+|(?<=[.!?])\s+/)
@@ -300,10 +341,17 @@ function enrichExplanation(clusterId, explanation) {
     if (supportingConcept) rationale = `${rationale} ${supportingConcept}`;
   }
 
-  let concept = explanation.concept;
+  let concept = sanitizeCombinedConcept(explanation.concept, rationale);
   if (normalizeKey(concept).length < 70) {
-    concept = `${concept}\n\n핵심 정리\n${rationale}`.trim();
+    const [coreConcept, relatedConcepts] = concept.split(/\n\s*연결 개념\s*\n/);
+    concept = [
+      `${coreConcept}\n\n핵심 정리\n${rationale}`.trim(),
+      relatedConcepts ? `연결 개념\n${relatedConcepts.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
   }
+  concept = sanitizeCombinedConcept(concept, rationale);
 
   const occurrenceOptionExplanations = {};
   for (const question of questions) {
@@ -379,7 +427,11 @@ function parsePage(raw, fileName) {
     const richConnections = extractDetailsSummary(section, "🔗 함께 공부할 연결 개념");
     const simpleConnections = extractHeadingSection(section, "🔗 함께 공부할 연결 개념", []);
     const concept = cleanConcept(richConcept || simpleConcept, rationale);
-    const connections = cleanConcept(richConnections || simpleConnections, rationale);
+    const connections = cleanConnections(
+      richConnections || simpleConnections,
+      concept,
+      rationale,
+    );
     const combinedConcept = [
       concept,
       connections ? `연결 개념\n${connections}` : "",

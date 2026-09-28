@@ -149,8 +149,28 @@ for (const [clusterId, explanation] of Object.entries(explanations)) {
   if (rationaleLength < 35) warnings.push({ clusterId, type: "concise-rationale", length: rationaleLength });
   if (conceptLength < 70) warnings.push({ clusterId, type: "concise-concept", length: conceptLength });
   if (shortestOption < 20) warnings.push({ clusterId, type: "concise-option", length: shortestOption });
-  if (!/연결 개념/.test(explanation.concept)) {
-    warnings.push({ clusterId, type: "missing-related-concepts-heading" });
+  const connectionSection = String(explanation.concept).split(/\n\s*연결 개념\s*\n/)[1];
+  if (connectionSection) {
+    const connectionLines = connectionSection
+      .split("\n")
+      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+      .filter(Boolean);
+    connectionLines.forEach((line, index) => {
+      const generic =
+        /^(정답 개념의 계층과 대표 용도|관련 표준[·ㆍ, ]*전송 매체[·ㆍ, ]*제어 방식|관련 (?:표준|단계).*(?:구조|비교)|정답 개념|혼동 개념|선택지 비교|핵심 정리|정답 선택지\s*[—–:].*)$/.test(
+          line,
+        );
+      const meaningful =
+        (line.length >= 6 && /[—–:→]/.test(line)) ||
+        (line.length >= 12 &&
+          /이다|입니다|한다|합니다|사용|역할|기능|계층|주소|방식|구분|위해|제공|프로토콜|표준|장치|번호|전송|관리/.test(
+            line,
+          )) ||
+        (line.length >= 20 && /[.!?]$/.test(line));
+      if (generic || !meaningful) {
+        errors.push({ clusterId, type: "unexplained-related-concept", index: index + 1, text: line });
+      }
+    });
   }
 }
 

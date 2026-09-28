@@ -105,6 +105,8 @@ type ActiveSession = {
   answers: Record<string, number>;
   gradedIds: string[];
   submitted: boolean;
+  studyFinished?: boolean;
+  studyEndedEarly?: boolean;
   returnView?: Exclude<View, "session">;
   returnScrollY?: number;
 };
@@ -310,7 +312,10 @@ export default function HomePage() {
     return true;
   }
 
-  function startWrongNoteSession(questionIds: string[]) {
+  function startReviewSession(
+    questionIds: string[],
+    returnView: Exclude<View, "session"> = "wrong-notes",
+  ) {
     if (!bank || !questionIds.length) return false;
     const validQuestionIds = questionIds.filter((id) =>
       bank.questions.some((question) => question.id === id),
@@ -330,7 +335,7 @@ export default function HomePage() {
       answers: {},
       gradedIds: [],
       submitted: false,
-      returnView: "wrong-notes",
+      returnView,
       returnScrollY: questionIds.length === 1 ? window.scrollY : 0,
     });
     setView("session");
@@ -406,7 +411,7 @@ export default function HomePage() {
             progress={progress}
             filters={wrongNoteFilters}
             setFilters={setWrongNoteFilters}
-            onStartQuestions={startWrongNoteSession}
+            onStartQuestions={(questionIds) => startReviewSession(questionIds, "wrong-notes")}
           />
         )}
 
@@ -424,7 +429,13 @@ export default function HomePage() {
               setActive(null);
               window.setTimeout(() => window.scrollTo({ top: returnScrollY }), 0);
             }}
-            exitLabel={active.returnView === "wrong-notes" ? "오답 노트로" : "나가기"}
+            exitLabel={
+              active.returnView === "wrong-notes"
+                ? "오답 노트로"
+                : active.returnView === "profile"
+                  ? "나의 학습으로"
+                  : "나가기"
+            }
           />
         )}
 
@@ -434,6 +445,7 @@ export default function HomePage() {
             progress={progress}
             cloud={cloud}
             onOpenWrongNotes={() => navigateTo("wrong-notes")}
+            onStartQuestion={(questionId) => startReviewSession([questionId], "profile")}
             onReset={async () => {
               const cleared = await cloud.clearRemote();
               if (!cleared) return;
@@ -854,6 +866,14 @@ function HomeView({
 
   return (
     <div className="mx-auto grid max-w-[1480px] gap-7 px-4 py-6 sm:px-7 lg:grid-cols-[290px_minmax(0,1fr)] lg:py-8">
+      <section className="rounded-[24px] border border-sky-200 bg-gradient-to-br from-sky-50 to-blue-100 p-5 text-[#173a6a] shadow-sm dark:border-[#294463] dark:from-[#163b60] dark:to-[#102a46] dark:text-[#edf6ff] lg:hidden">
+        <Badge className="rounded-lg bg-primary text-primary-foreground">네트워크관리사 2급</Badge>
+        <h1 className="mt-3 text-2xl font-black tracking-[-0.04em]">기출 문제은행</h1>
+        <p className="mt-2 text-sm font-medium leading-6 text-[#526b8b] dark:text-[#c3d7ec]">
+          실제 필기 기출을 회차별·오답·랜덤·고빈도 방식으로 풀고 상세 해설로 복습하는
+          학습 페이지입니다.
+        </p>
+      </section>
       <aside className="space-y-5">
         <section className="overflow-hidden rounded-[24px] border border-[#cfe0f7] bg-[#e5f0ff] p-5 text-[#173a6a] shadow-[0_18px_45px_rgba(37,99,235,.11)] dark:border-[#294463] dark:bg-[#163b60] dark:text-[#edf6ff]">
           <div className="mb-8 flex items-start justify-between">
@@ -1568,11 +1588,19 @@ function SessionView({
   const currentExplanation = explanations[current.clusterId];
   const cluster = clusterById.get(current.clusterId);
   const isStudy = active.options.type === "study";
+  const isStudyResult = isStudy && active.studyFinished === true;
   const currentAnswer = active.answers[current.id];
   const isRevealed = active.gradedIds.includes(current.id) || active.submitted;
   const examScore = active.submitted
     ? questions.filter((question) => active.answers[question.id] === question.answer).length
     : 0;
+  const studyAnswered = questions.filter((question) => active.gradedIds.includes(question.id));
+  const studyCorrect = studyAnswered.filter(
+    (question) => active.answers[question.id] === question.answer,
+  );
+  const studyWrong = studyAnswered.filter(
+    (question) => active.answers[question.id] !== question.answer,
+  );
 
   function choose(question: Question, answer: number) {
     if (active.submitted || (isStudy && active.gradedIds.includes(question.id))) return;
@@ -1609,6 +1637,49 @@ function SessionView({
     setActive((session) =>
       session
         ? { ...session, submitted: true, gradedIds: session.questionIds }
+        : session,
+    );
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function finishStudy(endedEarly = false) {
+    if (!active.gradedIds.length) {
+      onExit();
+      return;
+    }
+    setActive((session) =>
+      session
+        ? { ...session, studyFinished: true, studyEndedEarly: endedEarly }
+        : session,
+    );
+    setMobileMenu(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function requestExit() {
+    const shouldShowPartialResult =
+      isStudy &&
+      !active.studyFinished &&
+      active.options.count === "all" &&
+      active.gradedIds.length > 0;
+    if (shouldShowPartialResult) finishStudy(true);
+    else onExit();
+  }
+
+  function retryStudyWrong() {
+    if (!studyWrong.length) return;
+    setActive((session) =>
+      session
+        ? {
+            ...session,
+            questionIds: shuffled(studyWrong.map((question) => question.id)),
+            index: 0,
+            answers: {},
+            gradedIds: [],
+            submitted: false,
+            studyFinished: false,
+            studyEndedEarly: false,
+          }
         : session,
     );
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1670,33 +1741,49 @@ function SessionView({
     <>
       <div className="mx-auto max-w-[1480px] px-4 py-5 sm:px-7 lg:py-7">
         <div className="mb-5 flex flex-wrap items-center gap-3">
-          <Button variant="outline" size="sm" className="rounded-xl" onClick={onExit}>
-            <ChevronLeft className="size-4" /> {exitLabel}
+          <Button variant="outline" size="sm" className="rounded-xl" onClick={requestExit}>
+            <ChevronLeft className="size-4" /> {isStudyResult ? exitLabel : "나가기"}
           </Button>
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center justify-between gap-3 text-xs font-bold text-muted-foreground">
               <span>
-                {modeMeta.find((mode) => mode.id === active.options.mode)?.label} ·{" "}
-                {isStudy ? "학습 모드" : "시험 모드"}
+                {isStudyResult
+                  ? active.studyEndedEarly
+                    ? "중단 시점 학습 결과"
+                    : "학습 결과"
+                  : `${modeMeta.find((mode) => mode.id === active.options.mode)?.label} · ${
+                      isStudy ? "학습 모드" : "시험 모드"
+                    }`}
               </span>
               <span>
-                {active.index + 1} / {questions.length}
+                {isStudyResult
+                  ? `${studyAnswered.length}문제 풀이`
+                  : `${active.index + 1} / ${questions.length}`}
               </span>
             </div>
-            <Progress value={((active.index + 1) / questions.length) * 100} className="h-2" />
+            <Progress
+              value={
+                isStudyResult
+                  ? (studyAnswered.length / questions.length) * 100
+                  : ((active.index + 1) / questions.length) * 100
+              }
+              className="h-2"
+            />
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            className="rounded-xl md:hidden"
-            aria-label="문제 번호 열기"
-            onClick={() => setMobileMenu((value) => !value)}
-          >
-            <Menu className="size-4" />
-          </Button>
+          {!isStudyResult && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-xl md:hidden"
+              aria-label="문제 번호 열기"
+              onClick={() => setMobileMenu((value) => !value)}
+            >
+              <Menu className="size-4" />
+            </Button>
+          )}
         </div>
 
-        {mobileMenu && (
+        {mobileMenu && !isStudyResult && (
           <QuestionNavigator
             questions={questions}
             active={active}
@@ -1727,7 +1814,18 @@ function SessionView({
           </section>
         )}
 
-        {isStudy ? (
+        {isStudyResult ? (
+          <StudyResult
+            questions={questions}
+            answered={studyAnswered}
+            correct={studyCorrect}
+            wrong={studyWrong}
+            endedEarly={active.studyEndedEarly === true}
+            onRetryWrong={retryStudyWrong}
+            onExit={onExit}
+            exitLabel={exitLabel}
+          />
+        ) : isStudy ? (
           <StudyQuestion
             question={current}
             index={active.index}
@@ -1746,7 +1844,7 @@ function SessionView({
             }}
             onPrevious={() => move(Math.max(0, active.index - 1))}
             onNext={() => {
-              if (active.index === questions.length - 1) onExit();
+              if (active.index === questions.length - 1) finishStudy(false);
               else move(active.index + 1);
             }}
             hasPrevious={active.index > 0}
@@ -1856,6 +1954,129 @@ function SessionView({
   );
 }
 
+function StudyResult({
+  questions,
+  answered,
+  correct,
+  wrong,
+  endedEarly,
+  onRetryWrong,
+  onExit,
+  exitLabel,
+}: {
+  questions: Question[];
+  answered: Question[];
+  correct: Question[];
+  wrong: Question[];
+  endedEarly: boolean;
+  onRetryWrong: () => void;
+  onExit: () => void;
+  exitLabel: string;
+}) {
+  const accuracy = answered.length ? Math.round((correct.length / answered.length) * 100) : 0;
+  const unanswered = Math.max(0, questions.length - answered.length);
+
+  return (
+    <section className="overflow-hidden rounded-[28px] border border-border bg-card shadow-[0_20px_60px_rgba(16,35,58,.08)]">
+      <div className="bg-[#173a6a] px-5 py-8 text-white dark:bg-[#102238] sm:px-8 sm:py-10">
+        <Badge className="rounded-lg bg-sky-300 text-[#0c2e4e] hover:bg-sky-300">
+          {endedEarly ? "중단 시점 결과" : "학습 완료"}
+        </Badge>
+        <h2 className="mt-4 text-3xl font-black tracking-[-0.045em] sm:text-4xl">
+          정답률 {accuracy}%
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-blue-100">
+          {endedEarly
+            ? `현재까지 채점한 ${answered.length}문제만 결과에 반영했습니다. 풀지 않은 문제는 오답으로 처리하지 않습니다.`
+            : `${answered.length}문제를 모두 풀었습니다. 틀린 문제는 바로 다시 풀 수 있습니다.`}
+        </p>
+      </div>
+
+      <div className="p-5 sm:p-8">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ResultMetric label="푼 문제" value={answered.length} tone="blue" />
+          <ResultMetric label="정답" value={correct.length} tone="green" />
+          <ResultMetric label="오답" value={wrong.length} tone="red" />
+          <ResultMetric label="남은 문제" value={unanswered} tone="slate" />
+        </div>
+
+        {wrong.length ? (
+          <div className="mt-7 rounded-2xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-900 dark:bg-rose-950/35 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-black text-rose-950 dark:text-rose-100">이번에 틀린 문제</h3>
+                <p className="mt-1 text-xs text-rose-800/75 dark:text-rose-200/75">
+                  문제 내용만 확인한 뒤, 아래 버튼으로 오답만 다시 풀 수 있습니다.
+                </p>
+              </div>
+              <Badge variant="destructive" className="shrink-0 rounded-lg">
+                {wrong.length}문제
+              </Badge>
+            </div>
+            <div className="mt-4 divide-y divide-rose-200 dark:divide-rose-900">
+              {wrong.map((question, index) => (
+                <div key={question.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-rose-100 text-xs font-black text-rose-800 dark:bg-rose-900 dark:text-rose-100">
+                    {index + 1}
+                  </span>
+                  <p className="min-w-0 text-sm font-bold leading-6">
+                    {cleanDisplayText(question.stem)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-7 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+            <p className="flex items-center gap-2 font-black">
+              <Check className="size-5" /> 현재까지 푼 문제를 모두 맞혔습니다.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Button variant="outline" size="lg" className="rounded-xl" onClick={onExit}>
+            {exitLabel === "오답 노트로"
+              ? "오답 노트로 돌아가기"
+              : exitLabel === "나의 학습으로"
+                ? "나의 학습으로 돌아가기"
+                : "학습 홈으로"}
+          </Button>
+          {wrong.length > 0 && (
+            <Button size="lg" className="gap-2 rounded-xl font-black" onClick={onRetryWrong}>
+              <RotateCcw className="size-4" /> 틀린 문제 다시 풀기
+            </Button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ResultMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "blue" | "green" | "red" | "slate";
+}) {
+  const styles = {
+    blue: "border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100",
+    green:
+      "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100",
+    red: "border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100",
+    slate: "border-border bg-secondary/55 text-foreground",
+  }[tone];
+  return (
+    <div className={`rounded-2xl border p-4 ${styles}`}>
+      <p className="text-xs font-bold opacity-70">{label}</p>
+      <p className="mt-1 text-3xl font-black">{value.toLocaleString()}</p>
+    </div>
+  );
+}
+
 function StudyQuestion({
   question,
   index,
@@ -1927,7 +2148,7 @@ function StudyQuestion({
             </Button>
           ) : (
             <Button size="lg" onClick={onNext} className="gap-2 rounded-xl px-6 font-extrabold">
-              {isLast ? "학습 마치기" : "다음 문제"} <ChevronRight className="size-4" />
+              {isLast ? "결과 보기" : "다음 문제"} <ChevronRight className="size-4" />
             </Button>
           )}
         </div>
@@ -2124,12 +2345,14 @@ function OptionList({
             disabled={revealed}
             aria-pressed={isSelected}
             onClick={() => onChoose(number)}
-            className={`group flex items-start gap-3 rounded-2xl border p-4 text-left text-[0.9375rem] leading-6 transition-all ${
+            className={`group flex items-start gap-3 rounded-2xl border p-4 text-left text-[0.9375rem] leading-6 transition-all disabled:cursor-default disabled:opacity-100 ${
               isCorrect
                 ? "border-emerald-500 bg-emerald-50 text-emerald-950 dark:bg-emerald-950 dark:text-emerald-100"
                 : isWrong
                   ? "border-rose-400 bg-rose-50 text-rose-950 dark:bg-rose-950 dark:text-rose-100"
-                  : isSelected
+                  : revealed
+                    ? "pointer-events-none border-border bg-background text-foreground"
+                    : isSelected
                     ? "border-primary bg-primary/5 shadow-sm"
                     : "border-border hover:border-primary/45 hover:bg-accent/60"
             }`}
@@ -2164,6 +2387,7 @@ function ExplanationPanel({
   const optionExplanations = question.options.map((option, index) =>
     resolveOptionExplanation(question.id, option, index, explanation),
   );
+  const conceptSections = explanation ? parseConceptSections(explanation.concept) : null;
   if (!explanation) {
     return (
       <div className="space-y-5 text-[0.9375rem] leading-7">
@@ -2210,7 +2434,7 @@ function ExplanationPanel({
           <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
             정답 {question.answer}번
           </p>
-          <h3 className="text-lg font-black">{explanation.title}</h3>
+          <h3 className="text-lg font-black">{correct ? "정답입니다" : "오답입니다"}</h3>
         </div>
       </div>
       <div className="space-y-5 text-[0.9375rem] leading-7">
@@ -2219,28 +2443,115 @@ function ExplanationPanel({
           <p>{explanation.rationale}</p>
         </section>
         <section>
-          <h4 className="mb-2 font-extrabold">선택지별 해설</h4>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="font-extrabold">선택지별 해설</h4>
+            <span className="text-xs font-semibold text-muted-foreground">
+              O: 맞는 지문 · X: 틀린 지문
+            </span>
+          </div>
           <ol className="space-y-2.5">
             {question.options.map((option, index) => (
               <li key={option}>
-                <strong>
+                <strong
+                  className={
+                    isOptionStatementTrue(question, index)
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : "text-rose-700 dark:text-rose-300"
+                  }
+                >
                   {["①", "②", "③", "④"][index]}{" "}
-                  {index + 1 === question.answer ? "정답." : "오답."}
+                  {isOptionStatementTrue(question, index) ? "O" : "X"}.
                 </strong>{" "}
-                {optionExplanations[index] ?? "해설을 검수하고 있습니다."}
+                {stripOptionVerdict(optionExplanations[index]) || "해설을 검수하고 있습니다."}
               </li>
             ))}
           </ol>
         </section>
-        <section className="rounded-2xl border border-emerald-200 bg-white/70 p-4 dark:border-emerald-900 dark:bg-black/15">
-          <h4 className="mb-1 flex items-center gap-2 font-extrabold">
-            <CircleAlert className="size-4" /> 개념 해설
-          </h4>
-          <p className="whitespace-pre-line">{explanation.concept}</p>
-        </section>
+        {conceptSections?.core && (
+          <section className="rounded-2xl border border-emerald-200 bg-white/70 p-4 dark:border-emerald-900 dark:bg-black/15">
+            <h4 className="mb-1 flex items-center gap-2 font-extrabold">
+              <CircleAlert className="size-4" /> 핵심 개념
+            </h4>
+            <p className="whitespace-pre-line">{conceptSections.core}</p>
+          </section>
+        )}
+        {conceptSections && conceptSections.connections.length > 0 && (
+          <section className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900 dark:bg-blue-950/30">
+            <h4 className="font-extrabold">함께 구분할 개념</h4>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              정답과 혼동하기 쉽거나 같은 범주에서 함께 출제되는 개념입니다. 이름만 외우지 말고
+              아래 차이를 비교해 두세요.
+            </p>
+            <ul className="mt-3 space-y-2">
+              {conceptSections.connections.map((connection) => (
+                <li key={connection} className="flex gap-2">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
+                  <span>{connection}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   );
+}
+
+function isOptionStatementTrue(question: Question, index: number) {
+  const compactStem = cleanDisplayText(question.stem).replace(/\s+/g, "");
+  const asksForIncorrect =
+    /(옳지않|바르지않|적절하지않|맞지않|잘못|틀린|아닌것|해당하지않|거리가먼|부적합|일치하지않)/.test(
+      compactStem,
+    );
+  return asksForIncorrect ? index + 1 !== question.answer : index + 1 === question.answer;
+}
+
+function stripOptionVerdict(value?: string) {
+  return String(value ?? "")
+    .replace(/^\s*[⭕❌✅○×]\s*/, "")
+    .replace(
+      /^\s*(?:(?:정답(?!은)|오답|옳음|틀림|맞다|틀리다)(?:\s*기준(?:에\s*부합한다|과\s*어긋난다))?[.!:]?\s*)+/,
+      "",
+    )
+    .replace(/^정답\s+정답은\s*/, "정답은 ")
+    .trim();
+}
+
+function parseConceptSections(value: string) {
+  const normalized = String(value ?? "").replace(/\r/g, "").trim();
+  const parts = normalized.split(
+    /\n\s*(?:연결 개념|함께 공부할 연결 개념|함께 구분할 개념)\s*\n/i,
+  );
+  const core = (parts.shift() ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !/^(선택지|핵심 정리|핵심 개념)$/.test(line))
+    .join("\n")
+    .trim();
+  const coreKey = normalizeOptionKey(core);
+  const genericConnection =
+    /^(정답 개념의 계층과 대표 용도|관련 표준[·ㆍ, ]*전송 매체[·ㆍ, ]*제어 방식|관련 (?:표준|단계).*(?:구조|비교)|정답 개념|혼동 개념|선택지 비교|핵심 정리|정답 선택지\s*[—–:].*)$/;
+  const seen = new Set<string>();
+  const connections = parts
+    .join("\n")
+    .split("\n")
+    .map((line) => line.replace(/^[-•]\s*/, "").trim())
+    .filter((line) => {
+      if (!line || genericConnection.test(line)) return false;
+      const key = normalizeOptionKey(line);
+      if (!key || seen.has(key) || (coreKey && coreKey.includes(key))) return false;
+      const hasExplanation =
+        (line.length >= 6 && /[—–:→]/.test(line)) ||
+        (line.length >= 12 &&
+          /이다|입니다|한다|합니다|사용|역할|기능|계층|주소|방식|구분|위해|제공|프로토콜|표준|장치|번호|전송|관리/.test(
+            line,
+          )) ||
+        (line.length >= 20 && /[.!?]$/.test(line));
+      if (!hasExplanation) return false;
+      seen.add(key);
+      return true;
+    });
+  return { core, connections };
 }
 
 function normalizeOptionKey(value: string) {
@@ -2367,12 +2678,14 @@ function ProfileView({
   progress,
   cloud,
   onOpenWrongNotes,
+  onStartQuestion,
   onReset,
 }: {
   bank: QuestionBank;
   progress: ProgressStore;
   cloud: ReturnType<typeof useCloudProgress>;
   onOpenWrongNotes: () => void;
+  onStartQuestion: (questionId: string) => void;
   onReset: () => void | Promise<void>;
 }) {
   const entries = Object.entries(progress.questions);
@@ -2419,11 +2732,27 @@ function ProfileView({
     .filter(([, item]) => item.wrong > 0)
     .sort(([, left], [, right]) => right.wrong - left.wrong)
     .slice(0, 8);
+  const questionById = new Map(bank.questions.map((question) => [question.id, question]));
   const questionByCluster = new Map(
-    bank.clusters.map((cluster) => [
-      cluster.id,
-      bank.questions.find((question) => question.id === cluster.representativeId),
-    ]),
+    bank.clusters.map((cluster) => {
+      const item = progress.questions[cluster.id];
+      const lastWrongQuestionId = [...(item?.history ?? [])]
+        .reverse()
+        .find((attempt) => !attempt.correct)?.questionId;
+      const latestOccurrence = cluster.occurrenceIds
+        .map((id) => questionById.get(id))
+        .filter((question): question is Question => Boolean(question))
+        .sort(
+          (left, right) =>
+            right.examDate.localeCompare(left.examDate) || right.number - left.number,
+        )[0];
+      return [
+        cluster.id,
+        questionById.get(lastWrongQuestionId ?? "") ??
+          latestOccurrence ??
+          questionById.get(cluster.representativeId),
+      ] as const;
+    }),
   );
 
   return (
@@ -2556,17 +2885,28 @@ function ProfileView({
       </div>
 
       <section className="mt-6 rounded-[24px] border border-border bg-card p-5 sm:p-6">
-        <h2 className="text-lg font-black">자주 틀린 문제</h2>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 className="text-lg font-black">자주 틀린 문제</h2>
+          <span className="text-xs font-semibold text-muted-foreground">
+            문제를 선택하면 바로 다시 풀 수 있습니다.
+          </span>
+        </div>
         {hardest.length ? (
           <div className="mt-4 divide-y divide-border">
             {hardest.map(([clusterId, item]) => {
               const question = questionByCluster.get(clusterId);
               return (
-                <div key={clusterId} className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
+                <button
+                  key={clusterId}
+                  type="button"
+                  disabled={!question}
+                  onClick={() => question && onStartQuestion(question.id)}
+                  className="group flex w-full items-start gap-4 rounded-xl px-2 py-4 text-left transition-colors first:pt-0 last:pb-0 hover:bg-accent/60 disabled:cursor-default disabled:hover:bg-transparent"
+                >
                   <Badge variant="destructive" className="mt-0.5 shrink-0 rounded-lg">
                     {item.wrong}회
                   </Badge>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 font-bold leading-6">
                       {question ? cleanDisplayText(question.stem) : clusterId}
                     </p>
@@ -2574,7 +2914,8 @@ function ProfileView({
                       {question?.subject} · {item.attempts}회 풀이
                     </p>
                   </div>
-                </div>
+                  <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+                </button>
               );
             })}
           </div>
