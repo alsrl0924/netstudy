@@ -17,6 +17,7 @@ import {
   CloudOff,
   Clock3,
   Flame,
+  FileUp,
   History,
   Home,
   ListChecks,
@@ -72,7 +73,9 @@ import {
   Explanation,
   ExplanationMap,
   formatExam,
+  importNotionWrongAttempts,
   loadProgress,
+  NotionWrongImportSummary,
   PracticeMode,
   ProgressStore,
   Question,
@@ -450,6 +453,11 @@ export default function HomePage() {
             cloud={cloud}
             onOpenWrongNotes={() => navigateTo("wrong-notes")}
             onStartQuestion={(questionId) => startReviewSession([questionId], "profile")}
+            onImportNotion={(value) => {
+              const imported = importNotionWrongAttempts(progress, bank, value);
+              setProgress(imported.store);
+              return imported.summary;
+            }}
             onReset={async () => {
               const cleared = await cloud.clearRemote();
               if (!cleared) return;
@@ -1640,7 +1648,9 @@ function SessionView({
 
   function skipStudyCurrent() {
     if (active.submitted || active.gradedIds.includes(current.id)) return;
-    setProgress((store) => recordAttempt(store, current, false));
+    setProgress((store) =>
+      recordAttempt(store, current, false, { answerStatus: "unknown" }),
+    );
     setActive((session) => {
       if (!session) return session;
       const answers = { ...session.answers };
@@ -1674,10 +1684,12 @@ function SessionView({
     let nextProgress = progress;
     for (const question of questions) {
       if (!active.answers[question.id] && !skippedIds.includes(question.id)) continue;
+      const skipped = skippedIds.includes(question.id);
       nextProgress = recordAttempt(
         nextProgress,
         question,
-        !skippedIds.includes(question.id) && active.answers[question.id] === question.answer,
+        !skipped && active.answers[question.id] === question.answer,
+        { answerStatus: skipped ? "unknown" : "answered" },
       );
     }
     setProgress(nextProgress);
@@ -2830,6 +2842,7 @@ function ProfileView({
   cloud,
   onOpenWrongNotes,
   onStartQuestion,
+  onImportNotion,
   onReset,
 }: {
   bank: QuestionBank;
@@ -2837,8 +2850,13 @@ function ProfileView({
   cloud: ReturnType<typeof useCloudProgress>;
   onOpenWrongNotes: () => void;
   onStartQuestion: (questionId: string) => void;
+  onImportNotion: (value: unknown) => NotionWrongImportSummary;
   onReset: () => void | Promise<void>;
 }) {
+  const [importOpen, setImportOpen] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importResult, setImportResult] = useState<NotionWrongImportSummary | null>(null);
   const entries = Object.entries(progress.questions);
   const allHistory = entries.flatMap(([, item]) => item.history);
   const totalAttempts = entries.reduce((sum, [, item]) => sum + item.attempts, 0);
@@ -2925,6 +2943,17 @@ function ProfileView({
         <div className="flex flex-wrap gap-2">
           <Button className="gap-2 rounded-xl" onClick={onOpenWrongNotes}>
             <RotateCcw className="size-4" /> 오답 노트 열기
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 rounded-xl"
+            onClick={() => {
+              setImportError("");
+              setImportResult(null);
+              setImportOpen(true);
+            }}
+          >
+            <FileUp className="size-4" /> Notion 오답 가져오기
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -3074,6 +3103,84 @@ function ProfileView({
           <EmptyMini text="아직 틀린 문제가 없습니다." />
         )}
       </section>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="rounded-2xl sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Notion 오답 기록 가져오기</DialogTitle>
+            <DialogDescription>
+              자격증 메모 DB에서 만든 전용 JSON 파일을 선택합니다. 실제 오답과 미응답을
+              구분해 기존 학습 기록에 합치며, 같은 기록은 다시 추가하지 않습니다.
+            </DialogDescription>
+          </DialogHeader>
+
+          <label
+            className={`flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-5 text-center transition-colors hover:bg-primary/10 ${
+              importBusy ? "pointer-events-none opacity-60" : ""
+            }`}
+          >
+            {importBusy ? (
+              <LoaderCircle className="size-7 animate-spin text-primary" />
+            ) : (
+              <FileUp className="size-7 text-primary" />
+            )}
+            <span className="mt-3 font-extrabold">
+              {importBusy ? "기록을 확인하고 있습니다" : "JSON 파일 선택"}
+            </span>
+            <span className="mt-1 text-xs text-muted-foreground">
+              가져온 기록은 이 기기에 저장되고, 로그인 상태에서는 클라우드에도 동기화됩니다.
+            </span>
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              onChange={async (event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+                if (!file) return;
+                setImportBusy(true);
+                setImportError("");
+                setImportResult(null);
+                try {
+                  const value = JSON.parse(await file.text()) as unknown;
+                  setImportResult(onImportNotion(value));
+                } catch (error) {
+                  setImportError(
+                    error instanceof Error ? error.message : "파일을 가져오지 못했습니다.",
+                  );
+                } finally {
+                  setImportBusy(false);
+                  input.value = "";
+                }
+              }}
+            />
+          </label>
+
+          {importResult && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+              <p className="font-black">{importResult.imported}회 기록을 가져왔습니다.</p>
+              <p className="mt-1 leading-6 opacity-85">
+                실제 오답 {importResult.wrong}회 · 미응답/모름 {importResult.missed}회
+                {importResult.duplicates ? ` · 이미 있던 기록 ${importResult.duplicates}회 제외` : ""}
+                {importResult.unmatched.length
+                  ? ` · 연결하지 못한 기록 ${importResult.unmatched.length}회`
+                  : ""}
+              </p>
+            </div>
+          )}
+          {importError && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-950 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">
+              {importError}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)}>
+              닫기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

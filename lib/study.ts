@@ -86,7 +86,17 @@ export type QuestionProgress = {
     questionId?: string;
     subject: string;
     topic: string;
+    answerStatus?: "answered" | "unknown";
+    source?: "site" | "notion";
   }>;
+};
+
+export type NotionWrongImportSummary = {
+  imported: number;
+  wrong: number;
+  missed: number;
+  duplicates: number;
+  unmatched: Array<{ examDate: string; number: number }>;
 };
 
 export type ProgressStore = {
@@ -158,13 +168,20 @@ export function recordAttempt(
   store: ProgressStore,
   question: Question,
   correct: boolean,
+  metadata: {
+    answerStatus?: "answered" | "unknown";
+    source?: "site" | "notion";
+    id?: string;
+    at?: string;
+  } = {},
 ): ProgressStore {
   const current = store.questions[question.clusterId] ?? emptyQuestionProgress();
-  const now = new Date().toISOString();
+  const now = metadata.at ?? new Date().toISOString();
   const id =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
+    metadata.id ??
+    (typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
-      : `${now}-${Math.random().toString(36).slice(2)}`;
+      : `${now}-${Math.random().toString(36).slice(2)}`);
   return {
     ...store,
     questions: {
@@ -184,11 +201,75 @@ export function recordAttempt(
             questionId: question.id,
             subject: question.subject,
             topic: inferTopic(question),
+            answerStatus: metadata.answerStatus ?? "answered",
+            source: metadata.source ?? "site",
           },
         ].slice(-500),
       },
     },
   };
+}
+
+export function importNotionWrongAttempts(
+  store: ProgressStore,
+  bank: QuestionBank,
+  value: unknown,
+): { store: ProgressStore; summary: NotionWrongImportSummary } {
+  const candidate = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  if (candidate.version !== 1 || candidate.source !== "notion-network-wrong-notes") {
+    throw new Error("네트워크관리사 Notion 오답 기록 파일이 아닙니다.");
+  }
+  const records = Array.isArray(candidate.records) ? candidate.records : null;
+  if (!records) throw new Error("가져올 오답 기록이 없습니다.");
+
+  const questionByExam = new Map(
+    bank.questions.map((question) => [`${question.examDate}#${question.number}`, question]),
+  );
+  const knownIds = new Set(
+    Object.values(store.questions).flatMap((question) => question.history.map((entry) => entry.id)),
+  );
+  let nextStore = store;
+  const summary: NotionWrongImportSummary = {
+    imported: 0,
+    wrong: 0,
+    missed: 0,
+    duplicates: 0,
+    unmatched: [],
+  };
+
+  for (const rawRecord of records) {
+    if (!rawRecord || typeof rawRecord !== "object") continue;
+    const record = rawRecord as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id : "";
+    const examDate = typeof record.examDate === "string" ? record.examDate : "";
+    const number = typeof record.number === "number" ? record.number : Number(record.number);
+    const status = record.status === "missed" ? "missed" : record.status === "wrong" ? "wrong" : "";
+    const at = typeof record.at === "string" && !Number.isNaN(Date.parse(record.at))
+      ? record.at
+      : new Date().toISOString();
+    if (!id || !examDate || !Number.isInteger(number) || !status) continue;
+    if (knownIds.has(id)) {
+      summary.duplicates += 1;
+      continue;
+    }
+    const question = questionByExam.get(`${examDate}#${number}`);
+    if (!question) {
+      summary.unmatched.push({ examDate, number });
+      continue;
+    }
+    nextStore = recordAttempt(nextStore, question, false, {
+      id,
+      at,
+      source: "notion",
+      answerStatus: status === "missed" ? "unknown" : "answered",
+    });
+    knownIds.add(id);
+    summary.imported += 1;
+    if (status === "missed") summary.missed += 1;
+    else summary.wrong += 1;
+  }
+
+  return { store: nextStore, summary };
 }
 
 export function normalizeProgress(value: unknown): ProgressStore {
