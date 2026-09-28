@@ -2519,7 +2519,7 @@ function QuestionSourceAsset({
                 width={asset.width}
                 height={asset.height}
                 alt={label}
-                loading="lazy"
+                loading="eager"
                 onLoad={() => setLoadFailed(false)}
                 onError={handleImageError}
                 className="block h-auto w-full"
