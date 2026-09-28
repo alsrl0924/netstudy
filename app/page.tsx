@@ -36,6 +36,7 @@ import {
   Trash2,
   UserRound,
   X,
+  ZoomIn,
 } from "lucide-react";
 
 import {
@@ -59,6 +60,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -2443,19 +2445,57 @@ function QuestionSourceAssets({ question }: { question: Question }) {
         원문 지문·도표
       </figcaption>
       <div className="grid gap-3">
-        {question.sourceAssets.map((asset, index) => (
-          // The lossless source image must be served as-is instead of being re-encoded.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={`${question.id}-${asset.sha256}`}
-            src={asset.src}
-            width={asset.width}
-            height={asset.height}
-            alt={`원본 PDF의 문항 자료${question.sourceAssets.length > 1 ? ` ${index + 1}` : ""}`}
-            loading="lazy"
-            className="mx-auto block h-auto max-w-full"
-          />
-        ))}
+        {question.sourceAssets.map((asset, index) => {
+          const label = `원본 PDF의 문항 자료${question.sourceAssets.length > 1 ? ` ${index + 1}` : ""}`;
+          const previewWidth = Math.min(asset.width * 2.5, 960);
+          const zoomWidth = Math.min(asset.width * 3.5, 1600);
+
+          return (
+            <Dialog key={`${question.id}-${asset.sha256}`}>
+              <DialogTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`${label} 크게 보기`}
+                  className="group mx-auto block max-w-full cursor-zoom-in rounded-xl border border-sky-100 bg-slate-50 p-2 transition hover:border-primary/40 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:border-sky-950 dark:bg-slate-950 dark:hover:bg-slate-900"
+                  style={{ width: `${previewWidth}px` }}
+                >
+                  {/* The lossless source image must be served as-is instead of being re-encoded. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={asset.src}
+                    width={asset.width}
+                    height={asset.height}
+                    alt={label}
+                    loading="lazy"
+                    className="block h-auto w-full"
+                  />
+                  <span className="mt-2 flex items-center justify-center gap-1 text-xs font-semibold text-slate-600 group-hover:text-primary dark:text-slate-300">
+                    <ZoomIn className="size-4" /> 눌러서 크게 보기
+                  </span>
+                </button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[96vh] w-[calc(100vw-1rem)] max-w-[96vw] overflow-hidden rounded-2xl p-3 sm:max-w-[96vw] sm:p-5">
+                <DialogHeader className="pr-8">
+                  <DialogTitle>원문 지문·도표 확대</DialogTitle>
+                  <DialogDescription>
+                    이미지를 좌우로 움직여 원문 내용을 확인할 수 있습니다.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[calc(96vh-6.5rem)] overflow-auto rounded-xl border border-sky-100 bg-white p-2 sm:p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={asset.src}
+                    width={asset.width}
+                    height={asset.height}
+                    alt={`${label} 확대 이미지`}
+                    className="mx-auto block h-auto max-w-none"
+                    style={{ width: `${zoomWidth}px` }}
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
+          );
+        })}
       </div>
     </figure>
   );
