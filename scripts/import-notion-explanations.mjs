@@ -357,10 +357,14 @@ function enrichExplanation(clusterId, explanation) {
   for (const question of questions) {
     occurrenceOptionExplanations[question.id] = question.options.map((option, index) => {
       const exact = details.find((detail) => normalizeKey(detail.option) === normalizeKey(option));
+      const closest = details
+        .map((detail) => ({ detail, score: optionSimilarity(option, detail.option) }))
+        .sort((left, right) => right.score - left.score)[0];
+      const matched = exact ?? (closest?.score >= 0.55 ? closest.detail : undefined);
       const generatedFallback = /이 회차에서 묻는 조건|교사용 정답은/.test(
-        exact?.explanation ?? "",
+        matched?.explanation ?? "",
       );
-      let text = generatedFallback ? "" : neutralizeOptionExplanation(exact?.explanation);
+      let text = generatedFallback ? "" : neutralizeOptionExplanation(matched?.explanation);
       const correct = index + 1 === question.answer;
       const correctOption = plain(question.options[question.answer - 1]);
       if (normalizeKey(text).length < 20) {
@@ -473,13 +477,19 @@ for (const [clusterId, override] of Object.entries(explanationOverrides)) {
   if (!Array.isArray(override.optionExplanations) || override.optionExplanations.length !== 4) {
     throw new Error(`${clusterId}: 보강 선택지 해설은 4개여야 합니다.`);
   }
+  const variantOptionDetails = Object.entries(override.variantOptionExplanations ?? {}).map(
+    ([option, explanation]) => ({ option, explanation }),
+  );
   explanations[clusterId] = {
     ...explanations[clusterId],
     ...override,
-    optionDetails: representative.options.map((option, index) => ({
-      option,
-      explanation: override.optionExplanations[index],
-    })),
+    optionDetails: [
+      ...representative.options.map((option, index) => ({
+        option,
+        explanation: override.optionExplanations[index],
+      })),
+      ...variantOptionDetails,
+    ],
     sourceNote: `PDF 원문 지문 대조 보강 · ${representative.sourceFile} · Q${representative.number}`,
     answer: representative.answer,
   };

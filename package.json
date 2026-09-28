@@ -15,6 +15,7 @@
     "data:build": "node scripts/build-question-data.mjs",
     "data:explanations": "node scripts/import-notion-explanations.mjs && node scripts/audit-explanations.mjs",
     "audit:explanations": "node scripts/audit-explanations.mjs",
+    "audit:quality": "node scripts/audit-question-quality.mjs",
     "data:all": "npm run data:build && npm run data:explanations"
   },
   "dependencies": {

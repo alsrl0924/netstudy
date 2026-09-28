@@ -2447,59 +2447,111 @@ function QuestionSourceAssets({ question }: { question: Question }) {
       <div className="grid min-w-0 gap-3">
         {question.sourceAssets.map((asset, index) => {
           const label = `원본 PDF의 문항 자료${question.sourceAssets.length > 1 ? ` ${index + 1}` : ""}`;
-          const previewWidth = Math.min(asset.width * 2.5, 960);
-          const zoomWidth = Math.min(asset.width * 3.5, 1600);
-
           return (
-            <Dialog key={`${question.id}-${asset.sha256}`}>
-              <div className="w-full min-w-0 max-w-full touch-pan-x overflow-x-auto overscroll-x-contain rounded-xl">
-                <DialogTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={`${label} 크게 보기`}
-                    className="group mx-auto block max-w-none cursor-zoom-in rounded-xl border border-sky-100 bg-slate-50 p-2 transition hover:border-primary/40 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:border-sky-950 dark:bg-slate-950 dark:hover:bg-slate-900"
-                    style={{ width: `${previewWidth}px` }}
-                  >
-                    {/* The lossless source image must be served as-is instead of being re-encoded. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={asset.src}
-                      width={asset.width}
-                      height={asset.height}
-                      alt={label}
-                      loading="lazy"
-                      className="block h-auto w-full"
-                    />
-                    <span className="mt-2 flex items-center justify-center gap-1 text-xs font-semibold text-slate-600 group-hover:text-primary dark:text-slate-300">
-                      <ZoomIn className="size-4" /> 좌우로 밀어 보기 · 누르면 크게 보기
-                    </span>
-                  </button>
-                </DialogTrigger>
-              </div>
-              <DialogContent className="max-h-[96vh] w-[calc(100vw-1rem)] max-w-[96vw] overflow-hidden rounded-2xl p-3 sm:max-w-[96vw] sm:p-5">
-                <DialogHeader className="pr-8">
-                  <DialogTitle>원문 지문·도표 확대</DialogTitle>
-                  <DialogDescription>
-                    이미지를 좌우로 움직여 원문 내용을 확인할 수 있습니다.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="max-h-[calc(96vh-6.5rem)] min-w-0 touch-pan-x overflow-auto overscroll-contain rounded-xl border border-sky-100 bg-white p-2 sm:p-4">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={asset.src}
-                    width={asset.width}
-                    height={asset.height}
-                    alt={`${label} 확대 이미지`}
-                    className="mx-auto block h-auto max-w-none"
-                    style={{ width: `${zoomWidth}px` }}
-                  />
-                </div>
-              </DialogContent>
-            </Dialog>
+            <QuestionSourceAsset
+              key={`${question.id}-${asset.sha256}`}
+              asset={asset}
+              label={label}
+            />
           );
         })}
       </div>
     </figure>
+  );
+}
+
+function QuestionSourceAsset({
+  asset,
+  label,
+}: {
+  asset: Question["sourceAssets"][number];
+  label: string;
+}) {
+  const [retry, setRetry] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const retrySeparator = asset.src.includes("?") ? "&" : "?";
+  const imageSrc = retry ? `${asset.src}${retrySeparator}retry=${retry}` : asset.src;
+  const previewWidth = Math.min(asset.width * 1.7, 720);
+  const zoomWidth = Math.min(asset.width * 3.5, 1600);
+
+  function handleImageError() {
+    if (retry === 0) {
+      setRetry(1);
+      return;
+    }
+    setLoadFailed(true);
+  }
+
+  function retryImage() {
+    setLoadFailed(false);
+    setRetry((current) => current + 1);
+  }
+
+  return (
+    <Dialog>
+      <div className="w-full min-w-0 max-w-full touch-pan-x overflow-x-auto overscroll-x-contain rounded-xl">
+        {loadFailed ? (
+          <div
+            className="mx-auto grid min-h-40 max-w-full place-items-center rounded-xl border border-amber-200 bg-amber-50 p-5 text-center dark:border-amber-900 dark:bg-amber-950/30"
+            style={{ width: `${previewWidth}px` }}
+          >
+            <div>
+              <AlertTriangle className="mx-auto mb-2 size-6 text-amber-600" />
+              <p className="font-bold">원문 이미지를 불러오지 못했습니다.</p>
+              <p className="mt-1 text-xs text-muted-foreground">{asset.sourceFile} · {asset.page}쪽</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={retryImage}>
+                <RefreshCw className="size-4" /> 다시 불러오기
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <DialogTrigger asChild>
+            <button
+              type="button"
+              aria-label={`${label} 크게 보기`}
+              className="group mx-auto block max-w-none cursor-zoom-in rounded-xl border border-sky-100 bg-slate-50 p-2 transition hover:border-primary/40 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:border-sky-950 dark:bg-slate-950 dark:hover:bg-slate-900"
+              style={{ width: `${previewWidth}px` }}
+            >
+              {/* The lossless source image must be served as-is instead of being re-encoded. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageSrc}
+                width={asset.width}
+                height={asset.height}
+                alt={label}
+                loading="lazy"
+                onLoad={() => setLoadFailed(false)}
+                onError={handleImageError}
+                className="block h-auto w-full"
+              />
+              <span className="mt-2 flex items-center justify-center gap-1 text-xs font-semibold text-slate-600 group-hover:text-primary dark:text-slate-300">
+                <ZoomIn className="size-4" /> 좌우로 밀어 보기 · 누르면 크게 보기
+              </span>
+            </button>
+          </DialogTrigger>
+        )}
+      </div>
+      <DialogContent className="max-h-[96vh] w-[calc(100vw-1rem)] max-w-[96vw] overflow-hidden rounded-2xl p-3 sm:max-w-[96vw] sm:p-5">
+        <DialogHeader className="pr-8">
+          <DialogTitle>원문 지문·도표 확대</DialogTitle>
+          <DialogDescription>
+            이미지를 좌우로 움직여 원문 내용을 확인할 수 있습니다.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[calc(96vh-6.5rem)] min-w-0 touch-pan-x overflow-auto overscroll-contain rounded-xl border border-sky-100 bg-white p-2 sm:p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageSrc}
+            width={asset.width}
+            height={asset.height}
+            alt={`${label} 확대 이미지`}
+            onError={handleImageError}
+            className="mx-auto block h-auto max-w-none"
+            style={{ width: `${zoomWidth}px` }}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2909,6 +2961,7 @@ function ProfileView({
   const allHistory = entries.flatMap(([, item]) => item.history);
   const totalAttempts = entries.reduce((sum, [, item]) => sum + item.attempts, 0);
   const totalWrong = entries.reduce((sum, [, item]) => sum + item.wrong, 0);
+  const totalCorrect = Math.max(0, totalAttempts - totalWrong);
   const clipped = entries.filter(([, item]) => item.clipped).length;
   const wrongQuestions = entries.filter(([, item]) => item.wrong > 0).length;
   const [now] = useState(() => Date.now());
@@ -2920,11 +2973,13 @@ function ProfileView({
   const subjectStats = bank.subjects.map((subject) => {
     const attempts = allHistory.filter((item) => item.subject === subject);
     const wrong = attempts.filter((item) => !item.correct).length;
+    const correct = attempts.length - wrong;
     return {
       subject,
       attempts: attempts.length,
       wrong,
-      rate: attempts.length ? Math.round((wrong / attempts.length) * 100) : 0,
+      correct,
+      accuracy: attempts.length ? Math.round((correct / attempts.length) * 100) : 0,
     };
   });
 
@@ -2939,10 +2994,13 @@ function ProfileView({
     .map(([topic, stats]) => ({
       topic,
       ...stats,
-      rate: stats.attempts ? Math.round((stats.wrong / stats.attempts) * 100) : 0,
+      correct: stats.attempts - stats.wrong,
+      accuracy: stats.attempts
+        ? Math.round(((stats.attempts - stats.wrong) / stats.attempts) * 100)
+        : 0,
     }))
     .filter((item) => item.wrong > 0)
-    .sort((left, right) => right.rate - left.rate || right.wrong - left.wrong)
+    .sort((left, right) => left.accuracy - right.accuracy || right.wrong - left.wrong)
     .slice(0, 8);
 
   const hardest = entries
@@ -3031,8 +3089,8 @@ function ProfileView({
         <MetricCard icon={ListChecks} label="총 풀이" value={totalAttempts} suffix="문제" />
         <MetricCard
           icon={Target}
-          label="전체 오답률"
-          value={totalAttempts ? Math.round((totalWrong / totalAttempts) * 100) : 0}
+          label="전체 정답률"
+          value={totalAttempts ? Math.round((totalCorrect / totalAttempts) * 100) : 0}
           suffix="%"
         />
         <MetricCard icon={RotateCcw} label="오답 문제" value={wrongQuestions} suffix="개" />
@@ -3066,17 +3124,17 @@ function ProfileView({
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section className="rounded-[24px] border border-border bg-card p-5 sm:p-6">
-          <h2 className="text-lg font-black">과목별 오답률</h2>
+          <h2 className="text-lg font-black">과목별 정답률</h2>
           <div className="mt-5 space-y-5">
             {subjectStats.map((item) => (
               <div key={item.subject}>
                 <div className="mb-2 flex items-center justify-between gap-3 text-sm">
                   <span className="font-bold">{item.subject}</span>
                   <span className="text-muted-foreground">
-                    {item.wrong}/{item.attempts} · {item.rate}%
+                    {item.correct}/{item.attempts} 정답 · {item.accuracy}%
                   </span>
                 </div>
-                <Progress value={item.rate} className="h-2.5" />
+                <AccuracyProgress value={item.accuracy} />
               </div>
             ))}
           </div>
@@ -3097,11 +3155,14 @@ function ProfileView({
                   <div className="min-w-0 flex-1">
                     <p className="font-bold">{item.topic}</p>
                     <p className="text-xs text-muted-foreground">
-                      {item.attempts}회 풀이 · {item.wrong}회 오답
+                      {item.attempts}회 풀이 · {item.correct}회 정답 · {item.wrong}회 오답
                     </p>
                   </div>
-                  <Badge variant={item.rate >= 60 ? "destructive" : "secondary"}>
-                    {item.rate}%
+                  <Badge
+                    className="shrink-0 border-transparent text-white"
+                    style={{ backgroundColor: accuracyColor(item.accuracy) }}
+                  >
+                    정답률 {item.accuracy}%
                   </Badge>
                 </div>
               ))}
@@ -3230,6 +3291,23 @@ function ProfileView({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function accuracyColor(value: number) {
+  const accuracy = Math.max(0, Math.min(100, value));
+  const hue = accuracy <= 50 ? (accuracy / 50) * 40 : 40 + ((accuracy - 50) / 50) * 175;
+  return `hsl(${Math.round(hue)} 78% 48%)`;
+}
+
+function AccuracyProgress({ value }: { value: number }) {
+  return (
+    <Progress
+      value={value}
+      aria-label={`정답률 ${value}%`}
+      className="h-2.5 bg-slate-200 [&_[data-slot=progress-indicator]]:bg-[var(--accuracy-color)] dark:bg-slate-700"
+      style={{ "--accuracy-color": accuracyColor(value) } as React.CSSProperties}
+    />
   );
 }
 
