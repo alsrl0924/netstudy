@@ -37,7 +37,12 @@ for (const cluster of bank.clusters) {
     continue;
   }
 
-  const serialized = JSON.stringify(explanation);
+  const serialized = JSON.stringify({
+    rationale: explanation.rationale,
+    concept: explanation.concept,
+    optionExplanations: explanation.optionExplanations,
+    occurrenceOptionExplanations: explanation.occurrenceOptionExplanations,
+  });
   for (const [type, pattern] of genericPatterns) {
     if (pattern.test(serialized)) issues.push({ clusterId: cluster.id, grade: cluster.grade, type });
   }
