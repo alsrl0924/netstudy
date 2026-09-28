@@ -2211,8 +2211,8 @@ function StudyQuestion({
   isLast: boolean;
 }) {
   return (
-    <article className="grid overflow-hidden rounded-[26px] border border-border bg-card shadow-[0_20px_60px_rgba(16,35,58,.08)] xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]">
-      <section className="p-5 sm:p-8 xl:border-r xl:border-border">
+    <article className="grid min-w-0 overflow-hidden rounded-[26px] border border-border bg-card shadow-[0_20px_60px_rgba(16,35,58,.08)] xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,.92fr)]">
+      <section className="min-w-0 p-5 sm:p-8 xl:border-r xl:border-border">
         <QuestionHead
           question={question}
           index={index}
@@ -2328,7 +2328,7 @@ function ExamQuestion({
   return (
     <article
       id={anchorId}
-      className="scroll-mt-24 rounded-[24px] border border-border bg-card p-5 shadow-sm sm:p-7"
+      className="min-w-0 scroll-mt-24 overflow-hidden rounded-[24px] border border-border bg-card p-5 shadow-sm sm:p-7"
     >
       <QuestionHead
         question={question}
@@ -2425,9 +2425,9 @@ function QuestionHead({
           <Bookmark className="size-5" fill={clipped ? "currentColor" : "none"} />
         </button>
       </div>
-      <div className="mb-7 flex items-start gap-3">
-        <span className="text-lg font-black text-primary">Q{index + 1}.</span>
-        <h2 className="text-lg font-bold leading-[1.7] tracking-[-0.018em] sm:text-xl">
+      <div className="mb-7 flex min-w-0 items-start gap-3">
+        <span className="shrink-0 text-lg font-black text-primary">Q{index + 1}.</span>
+        <h2 className="min-w-0 flex-1 break-words text-lg font-bold leading-[1.7] tracking-[-0.018em] sm:text-xl">
           {cleanDisplayText(question.stem)}
         </h2>
       </div>
@@ -2440,11 +2440,11 @@ function QuestionSourceAssets({ question }: { question: Question }) {
   if (!question.sourceAssets?.length) return null;
 
   return (
-    <figure className="mb-7 rounded-2xl border border-sky-200 bg-white p-3 shadow-sm dark:border-sky-900">
+    <figure className="mb-7 min-w-0 max-w-full overflow-hidden rounded-2xl border border-sky-200 bg-white p-3 shadow-sm dark:border-sky-900">
       <figcaption className="mb-3 text-xs font-bold text-slate-600">
         원문 지문·도표
       </figcaption>
-      <div className="grid gap-3">
+      <div className="grid min-w-0 gap-3">
         {question.sourceAssets.map((asset, index) => {
           const label = `원본 PDF의 문항 자료${question.sourceAssets.length > 1 ? ` ${index + 1}` : ""}`;
           const previewWidth = Math.min(asset.width * 2.5, 960);
@@ -2452,28 +2452,30 @@ function QuestionSourceAssets({ question }: { question: Question }) {
 
           return (
             <Dialog key={`${question.id}-${asset.sha256}`}>
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={`${label} 크게 보기`}
-                  className="group mx-auto block max-w-full cursor-zoom-in rounded-xl border border-sky-100 bg-slate-50 p-2 transition hover:border-primary/40 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:border-sky-950 dark:bg-slate-950 dark:hover:bg-slate-900"
-                  style={{ width: `${previewWidth}px` }}
-                >
-                  {/* The lossless source image must be served as-is instead of being re-encoded. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={asset.src}
-                    width={asset.width}
-                    height={asset.height}
-                    alt={label}
-                    loading="lazy"
-                    className="block h-auto w-full"
-                  />
-                  <span className="mt-2 flex items-center justify-center gap-1 text-xs font-semibold text-slate-600 group-hover:text-primary dark:text-slate-300">
-                    <ZoomIn className="size-4" /> 눌러서 크게 보기
-                  </span>
-                </button>
-              </DialogTrigger>
+              <div className="w-full min-w-0 max-w-full touch-pan-x overflow-x-auto overscroll-x-contain rounded-xl">
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`${label} 크게 보기`}
+                    className="group mx-auto block max-w-none cursor-zoom-in rounded-xl border border-sky-100 bg-slate-50 p-2 transition hover:border-primary/40 hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:border-sky-950 dark:bg-slate-950 dark:hover:bg-slate-900"
+                    style={{ width: `${previewWidth}px` }}
+                  >
+                    {/* The lossless source image must be served as-is instead of being re-encoded. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={asset.src}
+                      width={asset.width}
+                      height={asset.height}
+                      alt={label}
+                      loading="lazy"
+                      className="block h-auto w-full"
+                    />
+                    <span className="mt-2 flex items-center justify-center gap-1 text-xs font-semibold text-slate-600 group-hover:text-primary dark:text-slate-300">
+                      <ZoomIn className="size-4" /> 좌우로 밀어 보기 · 누르면 크게 보기
+                    </span>
+                  </button>
+                </DialogTrigger>
+              </div>
               <DialogContent className="max-h-[96vh] w-[calc(100vw-1rem)] max-w-[96vw] overflow-hidden rounded-2xl p-3 sm:max-w-[96vw] sm:p-5">
                 <DialogHeader className="pr-8">
                   <DialogTitle>원문 지문·도표 확대</DialogTitle>
@@ -2481,7 +2483,7 @@ function QuestionSourceAssets({ question }: { question: Question }) {
                     이미지를 좌우로 움직여 원문 내용을 확인할 수 있습니다.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="max-h-[calc(96vh-6.5rem)] overflow-auto rounded-xl border border-sky-100 bg-white p-2 sm:p-4">
+                <div className="max-h-[calc(96vh-6.5rem)] min-w-0 touch-pan-x overflow-auto overscroll-contain rounded-xl border border-sky-100 bg-white p-2 sm:p-4">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={asset.src}
