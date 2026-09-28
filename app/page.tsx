@@ -2535,13 +2535,19 @@ function OptionList({
                   : revealed
                     ? "pointer-events-none border-border bg-background text-foreground"
                     : isSelected
-                    ? "border-primary bg-primary/5 shadow-sm"
+                    ? "border-blue-600 bg-blue-100 text-blue-950 shadow-sm ring-2 ring-blue-200/70 dark:border-blue-400 dark:bg-blue-950/80 dark:text-blue-100 dark:ring-blue-900/70"
                     : "border-border hover:border-primary/45 hover:bg-accent/60"
             }`}
           >
             <span
               className={`grid size-7 shrink-0 place-items-center rounded-full border text-xs font-black ${
-                isSelected || isCorrect ? "border-current" : "border-border"
+                isCorrect
+                  ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-400 dark:bg-emerald-400 dark:text-emerald-950"
+                  : isWrong
+                    ? "border-rose-500 bg-rose-500 text-white dark:border-rose-400 dark:bg-rose-400 dark:text-rose-950"
+                    : isSelected
+                      ? "border-blue-600 bg-blue-600 text-white dark:border-blue-400 dark:bg-blue-400 dark:text-blue-950"
+                      : "border-border"
               }`}
             >
               {isCorrect ? <Check className="size-4" /> : isWrong ? <X className="size-4" /> : number}

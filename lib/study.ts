@@ -405,8 +405,54 @@ export function formatExam(date: string, round: number) {
   return `${year}년 정기 제${String(round).padStart(2, "0")}회 · ${month}.${day}`;
 }
 
+const OCR_LINE_BREAK_WORDS = [
+  "가능하다",
+  "기간",
+  "기능",
+  "네트워크",
+  "데이터",
+  "디지털신호",
+  "메모리",
+  "명령어",
+  "방식이다",
+  "사용한다",
+  "사용자",
+  "설명으로",
+  "시간이다",
+  "인터페이스",
+  "자동으로",
+  "전송계층",
+  "주소",
+  "정보",
+  "케이블",
+  "파티션",
+  "패킷",
+  "프로토콜",
+  "파일",
+  "호스트",
+  "않는다",
+  "올바른",
+] as const;
+
+function repairOcrLineBreaks(text: string) {
+  let repaired = text;
+
+  for (const word of OCR_LINE_BREAK_WORDS) {
+    for (let splitIndex = 1; splitIndex < word.length; splitIndex += 1) {
+      const brokenWord = `${word.slice(0, splitIndex)}\n${word.slice(splitIndex)}`;
+      repaired = repaired.replaceAll(brokenWord, word);
+    }
+  }
+
+  return repaired;
+}
+
 export function cleanDisplayText(text: string) {
-  return text.replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+  return repairOcrLineBreaks(text)
+    .replace(/([가-힣])\n다(?=[.!?])/g, "$1다")
+    .replace(/\s*\n\s*/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 export function yearStart(latestYear: number, range: YearRange) {
