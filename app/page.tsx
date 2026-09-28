@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  CircleHelp,
   Cloud,
   CloudOff,
   Clock3,
@@ -104,6 +105,7 @@ type ActiveSession = {
   index: number;
   answers: Record<string, number>;
   gradedIds: string[];
+  skippedIds?: string[];
   submitted: boolean;
   studyFinished?: boolean;
   studyEndedEarly?: boolean;
@@ -304,6 +306,7 @@ export default function HomePage() {
       index: 0,
       answers: {},
       gradedIds: [],
+      skippedIds: [],
       submitted: false,
       returnView: "home",
     });
@@ -334,6 +337,7 @@ export default function HomePage() {
       index: 0,
       answers: {},
       gradedIds: [],
+      skippedIds: [],
       submitted: false,
       returnView,
       returnScrollY: questionIds.length === 1 ? window.scrollY : 0,
@@ -1590,25 +1594,37 @@ function SessionView({
   const isStudy = active.options.type === "study";
   const isStudyResult = isStudy && active.studyFinished === true;
   const currentAnswer = active.answers[current.id];
+  const skippedIds = active.skippedIds ?? [];
+  const currentSkipped = skippedIds.includes(current.id);
   const isRevealed = active.gradedIds.includes(current.id) || active.submitted;
   const examScore = active.submitted
     ? questions.filter((question) => active.answers[question.id] === question.answer).length
     : 0;
+  const examSkipped = questions.filter((question) => skippedIds.includes(question.id)).length;
+  const examUnanswered = questions.filter((question) => !active.answers[question.id]).length;
   const studyAnswered = questions.filter((question) => active.gradedIds.includes(question.id));
   const studyCorrect = studyAnswered.filter(
     (question) => active.answers[question.id] === question.answer,
   );
   const studyWrong = studyAnswered.filter(
+    (question) =>
+      !skippedIds.includes(question.id) && active.answers[question.id] !== question.answer,
+  );
+  const studySkipped = studyAnswered.filter((question) => skippedIds.includes(question.id));
+  const studyNeedsReview = studyAnswered.filter(
     (question) => active.answers[question.id] !== question.answer,
   );
 
   function choose(question: Question, answer: number) {
     if (active.submitted || (isStudy && active.gradedIds.includes(question.id))) return;
-    setActive((session) =>
-      session
-        ? { ...session, answers: { ...session.answers, [question.id]: answer } }
-        : session,
-    );
+    setActive((session) => {
+      if (!session) return session;
+      return {
+        ...session,
+        answers: { ...session.answers, [question.id]: answer },
+        skippedIds: (session.skippedIds ?? []).filter((id) => id !== question.id),
+      };
+    });
   }
 
   function gradeCurrent() {
@@ -1622,15 +1638,46 @@ function SessionView({
     );
   }
 
+  function skipStudyCurrent() {
+    if (active.submitted || active.gradedIds.includes(current.id)) return;
+    setProgress((store) => recordAttempt(store, current, false));
+    setActive((session) => {
+      if (!session) return session;
+      const answers = { ...session.answers };
+      delete answers[current.id];
+      return {
+        ...session,
+        answers,
+        gradedIds: [...session.gradedIds, current.id],
+        skippedIds: [...new Set([...(session.skippedIds ?? []), current.id])],
+      };
+    });
+  }
+
+  function skipExamQuestion(question: Question, advance: boolean) {
+    if (active.submitted) return;
+    setActive((session) => {
+      if (!session) return session;
+      const answers = { ...session.answers };
+      delete answers[question.id];
+      return {
+        ...session,
+        answers,
+        skippedIds: [...new Set([...(session.skippedIds ?? []), question.id])],
+      };
+    });
+    if (advance && active.index < questions.length - 1) move(active.index + 1);
+  }
+
   function submitExam() {
     if (active.submitted) return;
     let nextProgress = progress;
     for (const question of questions) {
-      if (!active.answers[question.id]) continue;
+      if (!active.answers[question.id] && !skippedIds.includes(question.id)) continue;
       nextProgress = recordAttempt(
         nextProgress,
         question,
-        active.answers[question.id] === question.answer,
+        !skippedIds.includes(question.id) && active.answers[question.id] === question.answer,
       );
     }
     setProgress(nextProgress);
@@ -1667,15 +1714,16 @@ function SessionView({
   }
 
   function retryStudyWrong() {
-    if (!studyWrong.length) return;
+    if (!studyNeedsReview.length) return;
     setActive((session) =>
       session
         ? {
             ...session,
-            questionIds: shuffled(studyWrong.map((question) => question.id)),
+            questionIds: shuffled(studyNeedsReview.map((question) => question.id)),
             index: 0,
             answers: {},
             gradedIds: [],
+            skippedIds: [],
             submitted: false,
             studyFinished: false,
             studyEndedEarly: false,
@@ -1801,8 +1849,11 @@ function SessionView({
                 {examScore} / {questions.length}
               </p>
               <p className="mt-2 text-sm text-slate-300">
-                정답률 {Math.round((examScore / questions.length) * 100)}% · 아래에서 모든 문제의
-                정답과 해설을 확인하세요.
+                정답률 {Math.round((examScore / questions.length) * 100)}% · 모름 {examSkipped}문제
+                {examUnanswered > examSkipped
+                  ? ` · 미응답 ${examUnanswered - examSkipped}문제`
+                  : ""}
+                {" · "}아래에서 모든 문제의 정답과 해설을 확인하세요.
               </p>
             </div>
             <Button
@@ -1820,6 +1871,8 @@ function SessionView({
             answered={studyAnswered}
             correct={studyCorrect}
             wrong={studyWrong}
+            skipped={studySkipped}
+            needsReview={studyNeedsReview}
             endedEarly={active.studyEndedEarly === true}
             onRetryWrong={retryStudyWrong}
             onExit={onExit}
@@ -1832,11 +1885,13 @@ function SessionView({
             cluster={cluster}
             explanation={currentExplanation}
             selected={currentAnswer}
+            skipped={currentSkipped}
             revealed={isRevealed}
             clipped={currentProgress.clipped}
             wrongCount={currentProgress.wrong}
             onChoose={(answer) => choose(current, answer)}
             onGrade={gradeCurrent}
+            onSkip={skipStudyCurrent}
             onClip={() => toggleClip()}
             onNote={() => {
               setNoteDraft(currentProgress.note);
@@ -1858,11 +1913,13 @@ function SessionView({
                   question={current}
                   index={active.index}
                   selected={currentAnswer}
+                  skipped={currentSkipped}
                   submitted={active.submitted}
                   explanation={currentExplanation}
                   cluster={cluster}
                   clipped={currentProgress.clipped}
                   onChoose={(answer) => choose(current, answer)}
+                  onSkip={() => skipExamQuestion(current, true)}
                   onClip={() => toggleClip()}
                 />
                 <div className="mt-4 flex justify-between gap-3">
@@ -1893,11 +1950,13 @@ function SessionView({
                       index={index}
                     anchorId={`question-${index + 1}`}
                       selected={active.answers[question.id]}
+                      skipped={skippedIds.includes(question.id)}
                       submitted={active.submitted}
                       explanation={explanations[question.clusterId]}
                       cluster={clusterById.get(question.clusterId)}
                       clipped={item.clipped}
                       onChoose={(answer) => choose(question, answer)}
+                      onSkip={() => skipExamQuestion(question, false)}
                       onClip={() => toggleClip(question)}
                     />
                   );
@@ -1959,6 +2018,8 @@ function StudyResult({
   answered,
   correct,
   wrong,
+  skipped,
+  needsReview,
   endedEarly,
   onRetryWrong,
   onExit,
@@ -1968,6 +2029,8 @@ function StudyResult({
   answered: Question[];
   correct: Question[];
   wrong: Question[];
+  skipped: Question[];
+  needsReview: Question[];
   endedEarly: boolean;
   onRetryWrong: () => void;
   onExit: () => void;
@@ -1988,40 +2051,55 @@ function StudyResult({
         <p className="mt-2 text-sm leading-6 text-blue-100">
           {endedEarly
             ? `현재까지 채점한 ${answered.length}문제만 결과에 반영했습니다. 풀지 않은 문제는 오답으로 처리하지 않습니다.`
-            : `${answered.length}문제를 모두 풀었습니다. 틀린 문제는 바로 다시 풀 수 있습니다.`}
+            : `${answered.length}문제를 모두 확인했습니다. 틀리거나 모른 문제는 바로 다시 풀 수 있습니다.`}
         </p>
       </div>
 
       <div className="p-5 sm:p-8">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <ResultMetric label="푼 문제" value={answered.length} tone="blue" />
           <ResultMetric label="정답" value={correct.length} tone="green" />
           <ResultMetric label="오답" value={wrong.length} tone="red" />
+          <ResultMetric label="모름" value={skipped.length} tone="amber" />
           <ResultMetric label="남은 문제" value={unanswered} tone="slate" />
         </div>
 
-        {wrong.length ? (
+        {needsReview.length ? (
           <div className="mt-7 rounded-2xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-900 dark:bg-rose-950/35 sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="font-black text-rose-950 dark:text-rose-100">이번에 틀린 문제</h3>
+                <h3 className="font-black text-rose-950 dark:text-rose-100">
+                  다시 확인할 문제
+                </h3>
                 <p className="mt-1 text-xs text-rose-800/75 dark:text-rose-200/75">
-                  문제 내용만 확인한 뒤, 아래 버튼으로 오답만 다시 풀 수 있습니다.
+                  틀렸거나 ‘모르겠어요’로 넘긴 문제를 다시 풀 수 있습니다.
                 </p>
               </div>
               <Badge variant="destructive" className="shrink-0 rounded-lg">
-                {wrong.length}문제
+                {needsReview.length}문제
               </Badge>
             </div>
             <div className="mt-4 divide-y divide-rose-200 dark:divide-rose-900">
-              {wrong.map((question, index) => (
+              {needsReview.map((question, index) => (
                 <div key={question.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
                   <span className="grid size-7 shrink-0 place-items-center rounded-full bg-rose-100 text-xs font-black text-rose-800 dark:bg-rose-900 dark:text-rose-100">
                     {index + 1}
                   </span>
-                  <p className="min-w-0 text-sm font-bold leading-6">
-                    {cleanDisplayText(question.stem)}
-                  </p>
+                  <div className="min-w-0">
+                    <Badge
+                      variant="outline"
+                      className={`mb-1 rounded-md text-[0.65rem] ${
+                        skipped.some((item) => item.id === question.id)
+                          ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+                          : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100"
+                      }`}
+                    >
+                      {skipped.some((item) => item.id === question.id) ? "모름" : "오답"}
+                    </Badge>
+                    <p className="text-sm font-bold leading-6">
+                      {cleanDisplayText(question.stem)}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2042,9 +2120,9 @@ function StudyResult({
                 ? "나의 학습으로 돌아가기"
                 : "학습 홈으로"}
           </Button>
-          {wrong.length > 0 && (
+          {needsReview.length > 0 && (
             <Button size="lg" className="gap-2 rounded-xl font-black" onClick={onRetryWrong}>
-              <RotateCcw className="size-4" /> 틀린 문제 다시 풀기
+              <RotateCcw className="size-4" /> 틀린·모른 문제 다시 풀기
             </Button>
           )}
         </div>
@@ -2060,13 +2138,15 @@ function ResultMetric({
 }: {
   label: string;
   value: number;
-  tone: "blue" | "green" | "red" | "slate";
+  tone: "blue" | "green" | "red" | "amber" | "slate";
 }) {
   const styles = {
     blue: "border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100",
     green:
       "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100",
     red: "border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100",
+    amber:
+      "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100",
     slate: "border-border bg-secondary/55 text-foreground",
   }[tone];
   return (
@@ -2083,11 +2163,13 @@ function StudyQuestion({
   cluster,
   explanation,
   selected,
+  skipped,
   revealed,
   clipped,
   wrongCount,
   onChoose,
   onGrade,
+  onSkip,
   onClip,
   onNote,
   onPrevious,
@@ -2100,11 +2182,13 @@ function StudyQuestion({
   cluster?: QuestionBank["clusters"][number];
   explanation?: Explanation;
   selected?: number;
+  skipped: boolean;
   revealed: boolean;
   clipped: boolean;
   wrongCount: number;
   onChoose: (answer: number) => void;
   onGrade: () => void;
+  onSkip: () => void;
   onClip: () => void;
   onNote: () => void;
   onPrevious: () => void;
@@ -2138,14 +2222,24 @@ function StudyQuestion({
             </span>
           </div>
           {!revealed ? (
-            <Button
-              size="lg"
-              disabled={!selected}
-              onClick={onGrade}
-              className="rounded-xl px-6 font-extrabold"
-            >
-              정답 확인
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={onSkip}
+                className="gap-2 rounded-xl px-5 font-extrabold"
+              >
+                <CircleHelp className="size-4" /> 모르겠어요
+              </Button>
+              <Button
+                size="lg"
+                disabled={!selected}
+                onClick={onGrade}
+                className="rounded-xl px-6 font-extrabold"
+              >
+                정답 확인
+              </Button>
+            </div>
           ) : (
             <Button size="lg" onClick={onNext} className="gap-2 rounded-xl px-6 font-extrabold">
               {isLast ? "결과 보기" : "다음 문제"} <ChevronRight className="size-4" />
@@ -2168,7 +2262,12 @@ function StudyQuestion({
         }`}
       >
         {revealed ? (
-          <ExplanationPanel question={question} explanation={explanation} selected={selected} />
+          <ExplanationPanel
+            question={question}
+            explanation={explanation}
+            selected={selected}
+            skipped={skipped}
+          />
         ) : (
           <div className="flex min-h-[420px] flex-col items-center justify-center px-5 text-center">
             <span className="mb-5 grid size-16 place-items-center rounded-2xl bg-background shadow-sm">
@@ -2190,22 +2289,26 @@ function ExamQuestion({
   index,
   anchorId,
   selected,
+  skipped,
   submitted,
   explanation,
   cluster,
   clipped,
   onChoose,
+  onSkip,
   onClip,
 }: {
   question: Question;
   index: number;
   anchorId?: string;
   selected?: number;
+  skipped: boolean;
   submitted: boolean;
   explanation?: Explanation;
   cluster?: QuestionBank["clusters"][number];
   clipped: boolean;
   onChoose: (answer: number) => void;
+  onSkip: () => void;
   onClip: () => void;
 }) {
   return (
@@ -2227,9 +2330,34 @@ function ExamQuestion({
         revealed={submitted}
         onChoose={onChoose}
       />
+      {!submitted && (
+        <div className="mt-4 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={skipped}
+            onClick={onSkip}
+            className={`gap-2 rounded-xl ${
+              skipped
+                ? "border-amber-300 bg-amber-50 text-amber-900 opacity-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+                : ""
+            }`}
+          >
+            <CircleHelp className="size-4" />
+            {skipped ? "모름으로 표시됨" : "모르겠어요 · 넘기기"}
+          </Button>
+        </div>
+      )}
       {submitted && (
         <div className="mt-6 rounded-2xl bg-[#eff6ff] p-5 dark:bg-[#102a46]">
-          <ExplanationPanel question={question} explanation={explanation} selected={selected} compact />
+          <ExplanationPanel
+            question={question}
+            explanation={explanation}
+            selected={selected}
+            skipped={skipped}
+            compact
+          />
         </div>
       )}
     </article>
@@ -2376,14 +2504,16 @@ function ExplanationPanel({
   question,
   explanation,
   selected,
+  skipped = false,
   compact = false,
 }: {
   question: Question;
   explanation?: Explanation;
   selected?: number;
+  skipped?: boolean;
   compact?: boolean;
 }) {
-  const correct = selected === question.answer;
+  const correct = !skipped && selected === question.answer;
   const optionExplanations = question.options.map((option, index) =>
     resolveOptionExplanation(question.id, option, index, explanation),
   );
@@ -2394,10 +2524,16 @@ function ExplanationPanel({
         <div className="flex items-center gap-3">
           <span
             className={`grid size-11 place-items-center rounded-full text-white ${
-              correct ? "bg-emerald-600" : "bg-rose-500"
+              skipped ? "bg-amber-500" : correct ? "bg-emerald-600" : "bg-rose-500"
             }`}
           >
-            {correct ? <Check className="size-5" /> : <X className="size-5" />}
+            {skipped ? (
+              <CircleHelp className="size-5" />
+            ) : correct ? (
+              <Check className="size-5" />
+            ) : (
+              <X className="size-5" />
+            )}
           </span>
           <div>
             <p className="text-xs font-bold text-muted-foreground">
@@ -2425,16 +2561,24 @@ function ExplanationPanel({
       <div className="mb-5 flex items-center gap-3">
         <span
           className={`grid size-11 shrink-0 place-items-center rounded-full text-white ${
-            correct ? "bg-emerald-600" : "bg-rose-500"
+            skipped ? "bg-amber-500" : correct ? "bg-emerald-600" : "bg-rose-500"
           }`}
         >
-          {correct ? <Check className="size-5" /> : <X className="size-5" />}
+          {skipped ? (
+            <CircleHelp className="size-5" />
+          ) : correct ? (
+            <Check className="size-5" />
+          ) : (
+            <X className="size-5" />
+          )}
         </span>
         <div>
           <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
             정답 {question.answer}번
           </p>
-          <h3 className="text-lg font-black">{correct ? "정답입니다" : "오답입니다"}</h3>
+          <h3 className="text-lg font-black">
+            {skipped ? "모르겠어요로 넘긴 문제입니다" : correct ? "정답입니다" : "오답입니다"}
+          </h3>
         </div>
       </div>
       <div className="space-y-5 text-[0.9375rem] leading-7">
@@ -2629,23 +2773,30 @@ function QuestionNavigator({
         <p className="text-sm font-extrabold">문제 번호</p>
         <span className="text-xs text-muted-foreground">
           {Object.keys(active.answers).length}/{questions.length} 답변
+          {(active.skippedIds?.length ?? 0) > 0
+            ? ` · ${active.skippedIds?.length ?? 0} 모름`
+            : ""}
         </span>
       </div>
       <div className="grid grid-cols-5 gap-2">
         {questions.map((question, index) => {
           const answered = Boolean(active.answers[question.id]);
+          const skipped = active.skippedIds?.includes(question.id) ?? false;
           const current = index === active.index;
           const correct =
             active.submitted && active.answers[question.id] === question.answer;
           const wrong =
-            active.submitted && active.answers[question.id] !== question.answer;
+            active.submitted && !skipped && active.answers[question.id] !== question.answer;
           return (
             <button
               key={question.id}
+              aria-label={`${index + 1}번${skipped ? " 모름" : answered ? " 답변 완료" : ""}`}
               onClick={() => onMove(index)}
               className={`aspect-square rounded-lg border text-xs font-black transition-colors ${
                 correct
                   ? "border-emerald-500 bg-emerald-100 text-emerald-900"
+                  : skipped
+                    ? "border-amber-400 bg-amber-100 text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
                   : wrong
                     ? "border-rose-400 bg-rose-100 text-rose-900"
                     : current
